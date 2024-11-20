@@ -1,4 +1,4 @@
-import { ValidationPipe } from '@nestjs/common';
+import { Logger, ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { IoAdapter } from '@nestjs/platform-socket.io';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
@@ -9,54 +9,61 @@ import { GlobalExceptionFilter } from './common/filters/http-exception.filter';
 import { TransformInterceptor } from './common/interceptors/transform.interceptor';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const logger = new Logger('Bootstrap');
 
-  // Sécurité
-  app.use(helmet());
-  app.use(compression());
+  try {
+    const app = await NestFactory.create(AppModule);
 
-  // Validation globale
-  app.useGlobalPipes(
-    new ValidationPipe({
-      whitelist: true,
-      transform: true,
-      forbidNonWhitelisted: true,
-      transformOptions: {
-        enableImplicitConversion: true,
-      },
-    }),
-  );
+    // Sécurité
+    app.use(helmet());
+    app.use(compression());
 
-  // Adaptateur WebSocket
-  app.useWebSocketAdapter(new IoAdapter(app));
+    // Validation globale
+    app.useGlobalPipes(
+      new ValidationPipe({
+        whitelist: true,
+        transform: true,
+        forbidNonWhitelisted: true,
+        transformOptions: {
+          enableImplicitConversion: true,
+        },
+      }),
+    );
 
-  // Filtres et intercepteurs globaux
-  app.useGlobalFilters(new GlobalExceptionFilter());
-  app.useGlobalInterceptors(new TransformInterceptor());
+    // Adaptateur WebSocket
+    app.useWebSocketAdapter(new IoAdapter(app));
 
-  // Configuration Swagger
-  const config = new DocumentBuilder()
-    .setTitle('ShowroomBaby API')
-    .setDescription('API pour la plateforme ShowroomBaby')
-    .setVersion('1.0')
-    .addBearerAuth()
-    .addTag('auth', 'Authentification')
-    .addTag('users', 'Gestion des utilisateurs')
-    .addTag('products', 'Gestion des produits')
-    .addTag('messages', 'Messagerie en temps réel')
-    .build();
-  const document = SwaggerModule.createDocument(app, config);
-  SwaggerModule.setup('api', app, document);
+    // Filtres et intercepteurs globaux
+    app.useGlobalFilters(new GlobalExceptionFilter());
+    app.useGlobalInterceptors(new TransformInterceptor());
 
-  // CORS
-  app.enableCors({
-    origin: process.env.FRONTEND_URL || 'http://localhost:3000',
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
-    credentials: true,
-  });
+    // Configuration Swagger
+    const config = new DocumentBuilder()
+      .setTitle('ShowroomBaby API')
+      .setDescription('API pour la plateforme ShowroomBaby')
+      .setVersion('1.0')
+      .addBearerAuth()
+      .addTag('auth', 'Authentification')
+      .addTag('users', 'Gestion des utilisateurs')
+      .addTag('products', 'Gestion des produits')
+      .addTag('messages', 'Messagerie en temps réel')
+      .build();
+    const document = SwaggerModule.createDocument(app, config);
+    SwaggerModule.setup('api', app, document);
 
-  const port = process.env.PORT || 3000;
-  await app.listen(port);
-  console.log(`Application lancée sur le port ${port}`);
+    // CORS
+    app.enableCors({
+      origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+      methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
+      credentials: true,
+    });
+
+    const port = process.env.PORT || 3000;
+    await app.listen(port);
+    logger.log(`Application lancée sur le port ${port}`);
+  } catch (error) {
+    logger.error(`Erreur lors du démarrage de l'application: ${error.message}`);
+    throw error;
+  }
 }
 bootstrap();

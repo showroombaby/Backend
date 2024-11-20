@@ -8,27 +8,20 @@ import { validationSchema } from './config/env.validation';
 
 @Module({
   imports: [
-    // Configuration globale
     ConfigModule.forRoot({
       isGlobal: true,
       load: [databaseConfig],
       validationSchema,
     }),
 
-    // Configuration TypeORM
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
-      useFactory: (configService: ConfigService) => ({
-        type: 'postgres',
-        url: configService.get('DATABASE_URL'),
-        autoLoadEntities: true,
-        synchronize: process.env.NODE_ENV !== 'production',
-        logging: process.env.NODE_ENV === 'development',
-      }),
       inject: [ConfigService],
+      useFactory: (configService: ConfigService) => ({
+        ...configService.get('database'),
+      }),
     }),
 
-    // Configuration Redis Cache
     CacheModule.registerAsync({
       isGlobal: true,
       imports: [ConfigModule],
