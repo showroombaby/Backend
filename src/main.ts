@@ -1,8 +1,62 @@
+import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import { IoAdapter } from '@nestjs/platform-socket.io';
+import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import * as compression from 'compression';
+import helmet from 'helmet';
 import { AppModule } from './app.module';
+import { GlobalExceptionFilter } from './common/filters/http-exception.filter';
+import { TransformInterceptor } from './common/interceptors/transform.interceptor';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
-  await app.listen(process.env.PORT ?? 3000);
+
+  // Sécurité
+  app.use(helmet());
+  app.use(compression());
+
+  // Validation globale
+  app.useGlobalPipes(
+    new ValidationPipe({
+      whitelist: true,
+      transform: true,
+      forbidNonWhitelisted: true,
+      transformOptions: {
+        enableImplicitConversion: true,
+      },
+    }),
+  );
+
+  // Adaptateur WebSocket
+  app.useWebSocketAdapter(new IoAdapter(app));
+
+  // Filtres et intercepteurs globaux
+  app.useGlobalFilters(new GlobalExceptionFilter());
+  app.useGlobalInterceptors(new TransformInterceptor());
+
+  // Configuration Swagger
+  const config = new DocumentBuilder()
+    .setTitle('ShowroomBaby API')
+    .setDescription('API pour la plateforme ShowroomBaby')
+    .setVersion('1.0')
+    .addBearerAuth()
+    .addTag('auth', 'Authentification')
+    .addTag('users', 'Gestion des utilisateurs')
+    .addTag('products', 'Gestion des produits')
+    .addTag('messages', 'Messagerie en temps réel')
+    .build();
+  const document = SwaggerModule.createDocument(app, config);
+  SwaggerModule.setup('api', app, document);
+
+  // CORS
+  app.enableCors({
+    origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
+    credentials: true,
+  });
+
+  const port = process.env.PORT || 3000;
+  await app.listen(port);
+  console.log(`Application lancée sur le port ${port}`);
 }
 bootstrap();
