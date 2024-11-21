@@ -5,6 +5,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import * as redisStore from 'cache-manager-redis-store';
 import databaseConfig from './config/database.config';
 import { validationSchema } from './config/env.validation';
+import { UsersModule } from './modules/users/users.module';
 
 @Module({
   imports: [
@@ -32,6 +33,8 @@ import { validationSchema } from './config/env.validation';
       }),
       inject: [ConfigService],
     }),
+
+    UsersModule,
   ],
   controllers: [],
   providers: [],
