@@ -7,3 +7,7 @@ export interface IAuthResponse {
   };
   message: string;
 }
+
+export interface ILoginResponse extends IAuthResponse {
+  access_token: string;
+}
