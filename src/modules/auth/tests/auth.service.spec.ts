@@ -108,6 +108,7 @@ describe('AuthService', () => {
     const loginDto = {
       email: 'test@test.com',
       password: 'password123',
+      rememberMe: false,
     };
 
     const mockUser = {
@@ -119,13 +120,11 @@ describe('AuthService', () => {
       avatar: null,
       createdAt: new Date(),
       updatedAt: new Date(),
-      validatePassword: jest
-        .fn()
-        .mockImplementation(() => Promise.resolve(true)),
+      validatePassword: jest.fn().mockResolvedValue(true),
       hashPassword: jest.fn(),
     } as unknown as User;
 
-    it('should successfully login a user', async () => {
+    it('should successfully login a user with normal expiration', async () => {
       (mockUsersService.findByEmail as jest.Mock).mockResolvedValue(mockUser);
       (mockUser.validatePassword as jest.Mock).mockResolvedValue(true);
 
@@ -133,10 +132,13 @@ describe('AuthService', () => {
 
       expect(mockUsersService.findByEmail).toHaveBeenCalledWith(loginDto.email);
       expect(mockUser.validatePassword).toHaveBeenCalledWith(loginDto.password);
-      expect(mockJwtService.sign).toHaveBeenCalledWith({
-        sub: mockUser.id,
-        email: mockUser.email,
-      });
+      expect(mockJwtService.sign).toHaveBeenCalledWith(
+        {
+          sub: mockUser.id,
+          email: mockUser.email,
+        },
+        { expiresIn: '24h' },
+      );
       expect(result).toEqual({
         user: {
           id: mockUser.id,
@@ -147,6 +149,23 @@ describe('AuthService', () => {
         access_token: 'test.jwt.token',
         message: 'Login successful',
       });
+    });
+
+    it('should successfully login a user with extended expiration when rememberMe is true', async () => {
+      const loginDtoWithRemember = { ...loginDto, rememberMe: true };
+      (mockUsersService.findByEmail as jest.Mock).mockResolvedValue(mockUser);
+      (mockUser.validatePassword as jest.Mock).mockResolvedValue(true);
+
+      const result = await service.login(loginDtoWithRemember);
+
+      expect(mockJwtService.sign).toHaveBeenCalledWith(
+        {
+          sub: mockUser.id,
+          email: mockUser.email,
+        },
+        { expiresIn: '30d' },
+      );
+      expect(result.access_token).toBe('test.jwt.token');
     });
 
     it('should throw UnauthorizedException when user not found', async () => {

@@ -12,6 +12,9 @@ import { IAuthResponse, ILoginResponse } from '../interfaces/auth.interface';
 
 @Injectable()
 export class AuthService {
+  private readonly JWT_EXPIRATION_NORMAL = '24h';
+  private readonly JWT_EXPIRATION_REMEMBER = '30d';
+
   constructor(
     private readonly usersService: UsersService,
     private readonly jwtService: JwtService,
@@ -50,6 +53,10 @@ export class AuthService {
       }
 
       const payload = { sub: user.id, email: user.email };
+      const expiresIn = loginDto.rememberMe
+        ? this.JWT_EXPIRATION_REMEMBER
+        : this.JWT_EXPIRATION_NORMAL;
+
       return {
         user: {
           id: user.id,
@@ -57,7 +64,7 @@ export class AuthService {
           firstName: user.firstName,
           lastName: user.lastName,
         },
-        access_token: this.jwtService.sign(payload),
+        access_token: this.jwtService.sign(payload, { expiresIn }),
         message: 'Login successful',
       };
     } catch (error) {
