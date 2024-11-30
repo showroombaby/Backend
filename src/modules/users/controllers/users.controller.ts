@@ -1,14 +1,63 @@
-import { Controller, Post, Body } from '@nestjs/common';
-import { UsersService } from '../services/users.service';
-import { RegisterDto } from '../dto/register.dto';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Logger,
+  Put,
+  UseGuards,
+} from '@nestjs/common';
+import { ApiBearerAuth, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { CurrentUser } from '../../auth/decorators/current-user.decorator';
+import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
+import { UpdateProfileDto } from '../dto/update-profile.dto';
 import { User } from '../entities/user.entity';
+import { UsersService } from '../services/users.service';
 
+@ApiTags('users')
 @Controller('users')
+@UseGuards(JwtAuthGuard)
+@ApiBearerAuth()
 export class UsersController {
+  private readonly logger = new Logger(UsersController.name);
+
   constructor(private readonly usersService: UsersService) {}
 
-  @Post('register')
-  async register(@Body() registerDto: RegisterDto): Promise<User> {
-    return this.usersService.create(registerDto);
+  @Get('profile')
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Profil récupéré avec succès',
+    type: User,
+  })
+  async getProfile(@CurrentUser() user: User): Promise<User> {
+    this.logger.debug(`Récupération du profil pour l'utilisateur ${user.id}`);
+    return user;
+  }
+
+  @Put('profile')
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Profil mis à jour avec succès',
+    type: User,
+  })
+  async updateProfile(
+    @CurrentUser() user: User,
+    @Body() updateProfileDto: UpdateProfileDto,
+  ): Promise<User> {
+    this.logger.debug(`Mise à jour du profil pour l'utilisateur ${user.id}`);
+    return this.usersService.updateProfile(user.id, updateProfileDto);
+  }
+
+  @Delete('profile')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiResponse({
+    status: HttpStatus.NO_CONTENT,
+    description: 'Compte supprimé avec succès',
+  })
+  async deleteAccount(@CurrentUser() user: User): Promise<void> {
+    this.logger.debug(`Suppression du compte pour l'utilisateur ${user.id}`);
+    await this.usersService.deleteAccount(user.id);
   }
 }

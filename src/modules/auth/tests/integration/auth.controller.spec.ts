@@ -26,9 +26,10 @@ describe('AuthController (e2e)', () => {
         TypeOrmModule.forRootAsync({
           imports: [ConfigModule],
           inject: [ConfigService],
-          useFactory: (configService: ConfigService) => ({
-            ...configService.get('database'),
-            autoLoadEntities: true,
+          useFactory: () => ({
+            type: 'sqlite',
+            database: ':memory:',
+            entities: [User],
             synchronize: true,
             logging: false,
           }),
@@ -97,33 +98,66 @@ describe('AuthController (e2e)', () => {
 
   describe('/auth/login (POST)', () => {
     const testUser = {
-      email: 'login@example.com',
+      email: 'test@example.com',
       password: 'password123',
       firstName: 'John',
       lastName: 'Doe',
     };
 
     beforeEach(async () => {
-      await request(app.getHttpServer())
+      // Créer l'utilisateur de test
+      const registerResponse = await request(app.getHttpServer())
         .post('/auth/register')
-        .send(testUser)
-        .expect(201);
+        .send(testUser);
+
+      console.log('Register response:', registerResponse.body);
+      expect(registerResponse.status).toBe(201);
+
+      // Vérifier que l'utilisateur est créé avec le bon mot de passe
+      const user = await userRepository.findOne({
+        where: { email: testUser.email },
+        select: ['id', 'email', 'password'],
+      });
+      console.log('User in DB:', {
+        id: user.id,
+        email: user.email,
+        hashedPassword: user.password,
+      });
+
+      expect(user).toBeDefined();
+      expect(user.email).toBe(testUser.email);
     });
 
-    it('should login successfully', () => {
-      return request(app.getHttpServer())
+    it('should login successfully', async () => {
+      // Tentative de connexion
+      const loginResponse = await request(app.getHttpServer())
         .post('/auth/login')
         .send({
           email: testUser.email,
           password: testUser.password,
-        })
-        .expect(201)
-        .expect((res) => {
-          expect(res.body).toHaveProperty('access_token');
-          expect(res.body).toHaveProperty('user');
-          expect(res.body.user.email).toBe(testUser.email);
-          expect(res.body.message).toBe('Login successful');
         });
+
+      console.log('Login attempt with:', {
+        email: testUser.email,
+        password: testUser.password,
+      });
+
+      if (loginResponse.status !== 201) {
+        console.log('Login failed. Response:', loginResponse.body);
+
+        // Vérifier l'état de l'utilisateur dans la base
+        const userAfterLoginAttempt = await userRepository.findOne({
+          where: { email: testUser.email },
+          select: ['id', 'email', 'password'],
+        });
+        console.log('User state after failed login:', userAfterLoginAttempt);
+      }
+
+      expect(loginResponse.status).toBe(201);
+      expect(loginResponse.body).toHaveProperty('access_token');
+      expect(loginResponse.body).toHaveProperty('user');
+      expect(loginResponse.body.user.email).toBe(testUser.email);
+      expect(loginResponse.body.message).toBe('Login successful');
     });
 
     it('should fail with invalid credentials', () => {
@@ -159,11 +193,6 @@ describe('AuthController (e2e)', () => {
 
   afterAll(async () => {
     await userRepository.clear();
-    if (app) {
-      await app.close();
-    }
-    if (moduleFixture) {
-      await moduleFixture.close();
-    }
+    await app.close();
   });
 });

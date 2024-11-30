@@ -1,13 +1,18 @@
+import { ConflictException, NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import { UsersService } from '../services/users.service';
 import { User } from '../entities/user.entity';
-import { ConflictException, NotFoundException } from '@nestjs/common';
+import { UsersService } from '../services/users.service';
 
 describe('UsersService', () => {
   let service: UsersService;
-  let repo: Repository<User>;
+
+  const mockRepository = {
+    create: jest.fn(),
+    save: jest.fn(),
+    findOne: jest.fn(),
+    remove: jest.fn(),
+  };
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -15,39 +20,119 @@ describe('UsersService', () => {
         UsersService,
         {
           provide: getRepositoryToken(User),
-          useValue: {
-            create: jest.fn(),
-            save: jest.fn(),
-            findOne: jest.fn(),
-          },
+          useValue: mockRepository,
         },
       ],
     }).compile();
 
     service = module.get<UsersService>(UsersService);
-    repo = module.get<Repository<User>>(getRepositoryToken(User));
   });
 
-  it('should be defined', () => {
-    expect(service).toBeDefined();
-  });
-
-  describe('create', () => {
-    it('should throw ConflictException when email already exists', async () => {
-      const registerDto = { email: 'test@test.com', password: 'password' };
-      jest.spyOn(repo, 'findOne').mockResolvedValue({ id: '1' } as User);
-
-      await expect(service.create(registerDto)).rejects.toThrow(
-        ConflictException,
-      );
-    });
+  afterEach(() => {
+    jest.clearAllMocks();
   });
 
   describe('findById', () => {
-    it('should throw NotFoundException when user not found', async () => {
-      jest.spyOn(repo, 'findOne').mockResolvedValue(null);
+    it('devrait retourner un utilisateur par son ID', async () => {
+      const mockUser = new User();
+      mockUser.id = '123';
+      mockRepository.findOne.mockResolvedValue(mockUser);
 
-      await expect(service.findById('1')).rejects.toThrow(NotFoundException);
+      const result = await service.findById('123');
+      expect(result).toBe(mockUser);
+      expect(mockRepository.findOne).toHaveBeenCalledWith({
+        where: { id: '123' },
+      });
+    });
+
+    it("devrait lever une exception si l'utilisateur n'existe pas", async () => {
+      mockRepository.findOne.mockResolvedValue(null);
+
+      await expect(service.findById('123')).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('findByEmail', () => {
+    it('devrait retourner un utilisateur par son email', async () => {
+      const mockUser = new User();
+      mockUser.email = 'test@example.com';
+      mockRepository.findOne.mockResolvedValue(mockUser);
+
+      const result = await service.findByEmail('test@example.com');
+      expect(result).toBe(mockUser);
+      expect(mockRepository.findOne).toHaveBeenCalledWith({
+        where: { email: 'test@example.com' },
+      });
+    });
+
+    it("devrait retourner null si l'email n'existe pas", async () => {
+      mockRepository.findOne.mockResolvedValue(null);
+
+      const result = await service.findByEmail('nonexistent@example.com');
+      expect(result).toBeNull();
+    });
+  });
+
+  describe('updateProfile', () => {
+    it('devrait mettre à jour le profil avec succès', async () => {
+      const mockUser = new User();
+      mockUser.id = '123';
+      mockUser.email = 'old@example.com';
+
+      const updateDto = {
+        email: 'new@example.com',
+        firstName: 'John',
+        lastName: 'Doe',
+      };
+
+      mockRepository.findOne.mockResolvedValueOnce(mockUser);
+      mockRepository.findOne.mockResolvedValueOnce(null); // Pas de conflit d'email
+      mockRepository.save.mockResolvedValue({ ...mockUser, ...updateDto });
+
+      const result = await service.updateProfile('123', updateDto);
+
+      expect(result.email).toBe(updateDto.email);
+      expect(result.firstName).toBe(updateDto.firstName);
+      expect(result.lastName).toBe(updateDto.lastName);
+    });
+
+    it("devrait lever une exception si l'email est déjà utilisé", async () => {
+      const mockUser = new User();
+      mockUser.id = '123';
+      mockUser.email = 'old@example.com';
+
+      const existingUser = new User();
+      existingUser.id = '456';
+      existingUser.email = 'new@example.com';
+
+      mockRepository.findOne
+        .mockResolvedValueOnce(mockUser)
+        .mockResolvedValueOnce(existingUser);
+
+      await expect(
+        service.updateProfile('123', { email: 'new@example.com' }),
+      ).rejects.toThrow(ConflictException);
+    });
+  });
+
+  describe('deleteAccount', () => {
+    it('devrait supprimer le compte avec succès', async () => {
+      const mockUser = new User();
+      mockUser.id = '123';
+      mockRepository.findOne.mockResolvedValue(mockUser);
+      mockRepository.remove.mockResolvedValue(mockUser);
+
+      await service.deleteAccount('123');
+
+      expect(mockRepository.remove).toHaveBeenCalledWith(mockUser);
+    });
+
+    it("devrait lever une exception si le compte n'existe pas", async () => {
+      mockRepository.findOne.mockResolvedValue(null);
+
+      await expect(service.deleteAccount('123')).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 });
