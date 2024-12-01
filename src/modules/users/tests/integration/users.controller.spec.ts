@@ -3,6 +3,8 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { Test, TestingModule } from '@nestjs/testing';
 import { TypeOrmModule, getRepositoryToken } from '@nestjs/typeorm';
+import * as fs from 'fs/promises';
+import * as path from 'path';
 import * as request from 'supertest';
 import { Repository } from 'typeorm';
 import { AuthModule } from '../../../auth/auth.module';
@@ -52,15 +54,22 @@ describe('UsersController (e2e)', () => {
   beforeEach(async () => {
     await userRepository.clear();
 
-    // Créer un utilisateur de test
-    testUser = userRepository.create({
-      email: 'test@example.com',
-      password: 'password123',
-      firstName: 'John',
-      lastName: 'Doe',
+    // Créer l'utilisateur via le endpoint d'enregistrement
+    const registerResponse = await request(app.getHttpServer())
+      .post('/auth/register')
+      .send({
+        email: 'test@example.com',
+        password: 'password123',
+        firstName: 'John',
+        lastName: 'Doe',
+      });
+
+    expect(registerResponse.status).toBe(201);
+
+    // Récupérer l'utilisateur créé
+    testUser = await userRepository.findOne({
+      where: { email: 'test@example.com' },
     });
-    await testUser.hashPassword();
-    testUser = await userRepository.save(testUser);
 
     // Générer un token JWT pour l'utilisateur
     const payload = { sub: testUser.id, email: testUser.email };
@@ -176,7 +185,133 @@ describe('UsersController (e2e)', () => {
     });
   });
 
+  describe('/users/change-password (POST)', () => {
+    it('devrait changer le mot de passe avec succès', async () => {
+      const changePasswordDto = {
+        currentPassword: 'password123',
+        newPassword: 'NewPassword123!',
+        confirmPassword: 'NewPassword123!',
+      };
+
+      await request(app.getHttpServer())
+        .post('/users/change-password')
+        .set('Authorization', `Bearer ${authToken}`)
+        .send(changePasswordDto)
+        .expect(200);
+
+      // Vérifier que le nouveau mot de passe fonctionne
+      const loginResponse = await request(app.getHttpServer())
+        .post('/auth/login')
+        .send({
+          email: testUser.email,
+          password: changePasswordDto.newPassword,
+        });
+
+      expect(loginResponse.status).toBe(201);
+      expect(loginResponse.body).toHaveProperty('access_token');
+    });
+
+    it('devrait échouer avec un mot de passe actuel incorrect', () => {
+      return request(app.getHttpServer())
+        .post('/users/change-password')
+        .set('Authorization', `Bearer ${authToken}`)
+        .send({
+          currentPassword: 'wrongpassword',
+          newPassword: 'NewPassword123!',
+          confirmPassword: 'NewPassword123!',
+        })
+        .expect(401);
+    });
+
+    it('devrait échouer si les nouveaux mots de passe ne correspondent pas', () => {
+      return request(app.getHttpServer())
+        .post('/users/change-password')
+        .set('Authorization', `Bearer ${authToken}`)
+        .send({
+          currentPassword: 'password123',
+          newPassword: 'NewPassword123!',
+          confirmPassword: 'DifferentPassword123!',
+        })
+        .expect(401);
+    });
+
+    it('devrait échouer avec un nouveau mot de passe invalide', () => {
+      return request(app.getHttpServer())
+        .post('/users/change-password')
+        .set('Authorization', `Bearer ${authToken}`)
+        .send({
+          currentPassword: 'password123',
+          newPassword: 'weak',
+          confirmPassword: 'weak',
+        })
+        .expect(400);
+    });
+  });
+
+  describe('/users/avatar', () => {
+    const testImageBuffer = Buffer.from('fake-image-content');
+
+    it('devrait uploader un avatar avec succès', async () => {
+      const response = await request(app.getHttpServer())
+        .post('/users/avatar')
+        .set('Authorization', `Bearer ${authToken}`)
+        .attach('avatar', testImageBuffer, 'test-image.jpg')
+        .expect(200);
+
+      expect(response.body).toHaveProperty('avatar');
+      expect(response.body.avatar).toMatch(/^[a-zA-Z0-9-]+\.jpg$/);
+
+      // Vérifier que l'utilisateur a été mis à jour
+      const updatedUser = await userRepository.findOne({
+        where: { id: testUser.id },
+      });
+      expect(updatedUser.avatar).toBe(response.body.avatar);
+    });
+
+    it("devrait supprimer l'avatar avec succès", async () => {
+      // D'abord uploader un avatar
+      const uploadResponse = await request(app.getHttpServer())
+        .post('/users/avatar')
+        .set('Authorization', `Bearer ${authToken}`)
+        .attach('avatar', testImageBuffer, 'test-image.jpg');
+
+      // Ensuite le supprimer
+      await request(app.getHttpServer())
+        .delete('/users/avatar')
+        .set('Authorization', `Bearer ${authToken}`)
+        .expect(204);
+
+      // Vérifier que l'avatar a été supprimé
+      const updatedUser = await userRepository.findOne({
+        where: { id: testUser.id },
+      });
+      expect(updatedUser.avatar).toBeNull();
+    });
+
+    it('devrait échouer sans fichier', () => {
+      return request(app.getHttpServer())
+        .post('/users/avatar')
+        .set('Authorization', `Bearer ${authToken}`)
+        .expect(400);
+    });
+
+    it('devrait échouer sans authentification', () => {
+      return request(app.getHttpServer())
+        .post('/users/avatar')
+        .attach('avatar', testImageBuffer, 'test-image.jpg')
+        .expect(401);
+    });
+  });
+
   afterAll(async () => {
+    // Nettoyer le dossier d'upload
+    const uploadsDir = path.join(process.cwd(), 'uploads/avatars');
+    try {
+      await fs.rm(uploadsDir, { recursive: true, force: true });
+    } catch (error) {
+      console.error('Erreur lors du nettoyage du dossier uploads:', error);
+    }
+
     await app.close();
   });
 });

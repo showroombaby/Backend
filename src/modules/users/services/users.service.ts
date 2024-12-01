@@ -3,10 +3,12 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { RegisterDto } from '../../auth/dto/register.dto';
+import { ChangePasswordDto } from '../dto/change-password.dto';
 import { UpdateProfileDto } from '../dto/update-profile.dto';
 import { User } from '../entities/user.entity';
 
@@ -72,6 +74,48 @@ export class UsersService {
 
     Object.assign(user, updateProfileDto);
     return this.userRepository.save(user);
+  }
+
+  async changePassword(
+    id: string,
+    changePasswordDto: ChangePasswordDto,
+  ): Promise<void> {
+    this.logger.debug(
+      `Tentative de changement de mot de passe pour l'utilisateur ${id}`,
+    );
+    const user = await this.findById(id);
+
+    this.logger.debug('Validation du mot de passe actuel');
+    this.logger.debug(
+      `Mot de passe fourni: ${changePasswordDto.currentPassword}`,
+    );
+    this.logger.debug(`Mot de passe haché en DB: ${user.password}`);
+
+    const isCurrentPasswordValid = await user.validatePassword(
+      changePasswordDto.currentPassword,
+    );
+
+    this.logger.debug(`Résultat de la validation: ${isCurrentPasswordValid}`);
+
+    if (!isCurrentPasswordValid) {
+      this.logger.error('Mot de passe actuel incorrect');
+      throw new UnauthorizedException('Mot de passe actuel incorrect');
+    }
+
+    if (changePasswordDto.newPassword !== changePasswordDto.confirmPassword) {
+      this.logger.error('Les mots de passe ne correspondent pas');
+      throw new UnauthorizedException(
+        'Le nouveau mot de passe et sa confirmation ne correspondent pas',
+      );
+    }
+
+    this.logger.debug('Mise à jour du mot de passe');
+    const updatedUser = this.userRepository.create({
+      ...user,
+      password: changePasswordDto.newPassword,
+    });
+    await this.userRepository.save(updatedUser);
+    this.logger.debug('Mot de passe mis à jour avec succès');
   }
 
   async deleteAccount(id: string): Promise<void> {
