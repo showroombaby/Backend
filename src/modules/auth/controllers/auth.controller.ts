@@ -15,6 +15,8 @@ import { RegisterResponseDto } from '../dto/register-response.dto';
 import { RegisterDto } from '../dto/register.dto';
 import { ILoginResponse } from '../interfaces/auth.interface';
 import { AuthService } from '../services/auth.service';
+import { RequestResetPasswordDto } from '../dto/request-reset-password.dto';
+import { ResetPasswordDto } from '../dto/reset-password.dto';
 
 @ApiTags('auth')
 @Controller('auth')
@@ -59,5 +61,35 @@ export class AuthController {
       }
       throw new UnauthorizedException('Invalid credentials');
     }
+  }
+
+  @Post('request-password-reset')
+  @HttpCode(HttpStatus.OK)
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Password reset email sent',
+  })
+  async requestPasswordReset(
+    @Body() requestResetPasswordDto: RequestResetPasswordDto,
+  ): Promise<void> {
+    this.logger.debug(
+      `Demande de réinitialisation de mot de passe pour ${requestResetPasswordDto.email}`,
+    );
+    await this.authService.requestPasswordReset(requestResetPasswordDto.email);
+  }
+
+  @Post('reset-password')
+  @HttpCode(HttpStatus.OK)
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Password has been reset',
+  })
+  async resetPassword(
+    @Body() resetPasswordDto: ResetPasswordDto,
+  ): Promise<void> {
+    this.logger.debug(
+      `Réinitialisation du mot de passe avec le token ${resetPasswordDto.token}`,
+    );
+    await this.authService.resetPassword(resetPasswordDto);
   }
 }

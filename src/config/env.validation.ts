@@ -12,4 +12,10 @@ export const validationSchema = Joi.object({
   REDIS_PORT: Joi.number().required(),
   STORAGE_KEY: Joi.string().required(),
   STORAGE_SECRET: Joi.string().required(),
+  SMTP_HOST: Joi.string().required(),
+  SMTP_PORT: Joi.number().required(),
+  SMTP_USER: Joi.string().required(),
+  SMTP_PASSWORD: Joi.string().required(),
+  SMTP_FROM: Joi.string().required(),
+  FRONTEND_URL: Joi.string().required(),
 });

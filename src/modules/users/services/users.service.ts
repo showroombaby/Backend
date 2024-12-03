@@ -126,4 +126,11 @@ export class UsersService {
     const user = await this.findById(id);
     await this.userRepository.remove(user);
   }
+
+  async updatePassword(id: string, newPassword: string): Promise<void> {
+    const user = await this.findById(id);
+    user.password = newPassword;
+    await this.userRepository.save(user);
+    this.logger.debug(`Mot de passe mis à jour pour l'utilisateur ${id}`);
+  }
 }
