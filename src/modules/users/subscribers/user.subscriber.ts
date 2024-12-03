@@ -4,6 +4,7 @@ import {
   EntitySubscriberInterface,
   EventSubscriber,
   InsertEvent,
+  LoadEvent,
 } from 'typeorm';
 import { User } from '../entities/user.entity';
 
@@ -19,7 +20,13 @@ export class UserSubscriber implements EntitySubscriberInterface<User> {
     return User;
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   async beforeInsert(event: InsertEvent<User>) {
     this.logger.debug('Avant insertion utilisateur');
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  afterLoad(entity: User, event?: LoadEvent<User>) {
+    this.logger.debug(`Utilisateur chargé : ${entity.id}`);
   }
 }
