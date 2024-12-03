@@ -4,12 +4,15 @@ import {
   Injectable,
   Logger,
   UnauthorizedException,
+  NotFoundException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { UsersService } from '../../users/services/users.service';
 import { LoginDto } from '../dto/login.dto';
 import { RegisterDto } from '../dto/register.dto';
 import { IAuthResponse, ILoginResponse } from '../interfaces/auth.interface';
+import { EmailService } from '../../email/services/email.service';
+import { ResetPasswordDto } from '../dto/reset-password.dto';
 
 @Injectable()
 export class AuthService {
@@ -20,6 +23,7 @@ export class AuthService {
   constructor(
     private readonly usersService: UsersService,
     private readonly jwtService: JwtService,
+    private readonly emailService: EmailService,
   ) {}
 
   async register(registerDto: RegisterDto): Promise<IAuthResponse> {
@@ -82,5 +86,34 @@ export class AuthService {
       this.logger.error('Erreur de connexion:', error);
       throw error;
     }
+  }
+
+  async requestPasswordReset(email: string): Promise<void> {
+    const user = await this.usersService.findByEmail(email);
+    if (!user) {
+      this.logger.debug(`Utilisateur non trouvé pour l'email: ${email}`);
+      throw new NotFoundException('User not found');
+    }
+
+    const resetToken = this.jwtService.sign(
+      { sub: user.id },
+      { expiresIn: '1h' },
+    );
+    await this.emailService.sendPasswordResetEmail(email, resetToken);
+  }
+
+  async resetPassword(resetPasswordDto: ResetPasswordDto): Promise<void> {
+    const { token, newPassword } = resetPasswordDto;
+    let userId: string;
+
+    try {
+      const payload = this.jwtService.verify(token);
+      userId = payload.sub;
+    } catch (error) {
+      this.logger.error('Token de réinitialisation invalide ou expiré');
+      throw new UnauthorizedException('Invalid or expired reset token');
+    }
+
+    await this.usersService.updatePassword(userId, newPassword);
   }
 }

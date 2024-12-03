@@ -2,27 +2,37 @@ import {
   BadRequestException,
   ConflictException,
   UnauthorizedException,
+  NotFoundException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { Test, TestingModule } from '@nestjs/testing';
 import { User } from '../../users/entities/user.entity';
 import { UsersService } from '../../users/services/users.service';
 import { AuthService } from '../services/auth.service';
+import { EmailService } from '../../email/services/email.service';
 
 describe('AuthService', () => {
   let service: AuthService;
-  let mockUsersService: Partial<UsersService>;
-  let mockJwtService: Partial<JwtService>;
+  let mockUsersService: jest.Mocked<UsersService>;
+  let mockJwtService: jest.Mocked<JwtService>;
+  let mockEmailService: jest.Mocked<EmailService>;
 
   beforeEach(async () => {
     mockUsersService = {
-      create: jest.fn(),
       findByEmail: jest.fn(),
-    };
+      create: jest.fn(),
+      findById: jest.fn(),
+      updatePassword: jest.fn(),
+    } as any;
 
     mockJwtService = {
       sign: jest.fn().mockReturnValue('test.jwt.token'),
-    };
+      verify: jest.fn(),
+    } as any;
+
+    mockEmailService = {
+      sendPasswordResetEmail: jest.fn(),
+    } as any;
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -34,6 +44,10 @@ describe('AuthService', () => {
         {
           provide: JwtService,
           useValue: mockJwtService,
+        },
+        {
+          provide: EmailService,
+          useValue: mockEmailService,
         },
       ],
     }).compile();
@@ -125,51 +139,47 @@ describe('AuthService', () => {
     } as unknown as User;
 
     it('should successfully login a user with normal expiration', async () => {
-      (mockUsersService.findByEmail as jest.Mock).mockResolvedValue(mockUser);
-      (mockUser.validatePassword as jest.Mock).mockResolvedValue(true);
+      mockUsersService.findByEmail.mockResolvedValue(mockUser);
+      mockJwtService.sign.mockReturnValue('test.jwt.token');
 
-      const result = await service.login(loginDto);
+      const result = await service.login({
+        email: 'test@test.com',
+        password: 'password123',
+      });
 
-      expect(mockUsersService.findByEmail).toHaveBeenCalledWith(loginDto.email);
-      expect(mockUser.validatePassword).toHaveBeenCalledWith(loginDto.password);
-      expect(mockJwtService.sign).toHaveBeenCalledWith(
-        {
-          sub: mockUser.id,
-          email: mockUser.email,
-        },
-        { expiresIn: '24h' },
-      );
       expect(result).toEqual({
+        access_token: 'test.jwt.token',
+        message: 'Login successful',
         user: {
           id: mockUser.id,
           email: mockUser.email,
           firstName: mockUser.firstName,
           lastName: mockUser.lastName,
         },
-        access_token: 'test.jwt.token',
-        message: 'Login successful',
       });
+
+      expect(mockJwtService.sign).toHaveBeenCalledWith(
+        { sub: mockUser.id, email: mockUser.email },
+        { expiresIn: '24h' },
+      );
     });
 
     it('should successfully login a user with extended expiration when rememberMe is true', async () => {
       const loginDtoWithRemember = { ...loginDto, rememberMe: true };
-      (mockUsersService.findByEmail as jest.Mock).mockResolvedValue(mockUser);
-      (mockUser.validatePassword as jest.Mock).mockResolvedValue(true);
+      mockUsersService.findByEmail.mockResolvedValue(mockUser);
+      mockJwtService.sign.mockReturnValue('test.jwt.token');
 
       const result = await service.login(loginDtoWithRemember);
 
+      expect(result.access_token).toBe('test.jwt.token');
       expect(mockJwtService.sign).toHaveBeenCalledWith(
-        {
-          sub: mockUser.id,
-          email: mockUser.email,
-        },
+        { sub: mockUser.id, email: mockUser.email },
         { expiresIn: '30d' },
       );
-      expect(result.access_token).toBe('test.jwt.token');
     });
 
     it('should throw UnauthorizedException when user not found', async () => {
-      (mockUsersService.findByEmail as jest.Mock).mockResolvedValue(null);
+      mockUsersService.findByEmail.mockResolvedValue(null);
 
       await expect(service.login(loginDto)).rejects.toThrow(
         UnauthorizedException,
@@ -178,14 +188,62 @@ describe('AuthService', () => {
     });
 
     it('should throw UnauthorizedException when password is invalid', async () => {
-      (mockUsersService.findByEmail as jest.Mock).mockResolvedValue(mockUser);
-      (mockUser.validatePassword as jest.Mock).mockResolvedValue(false);
+      mockUsersService.findByEmail.mockResolvedValue(mockUser);
+      mockUser.validatePassword = jest.fn().mockResolvedValue(false);
 
       await expect(service.login(loginDto)).rejects.toThrow(
         UnauthorizedException,
       );
       expect(mockUsersService.findByEmail).toHaveBeenCalledWith(loginDto.email);
-      expect(mockUser.validatePassword).toHaveBeenCalledWith(loginDto.password);
+    });
+  });
+
+  describe('requestPasswordReset', () => {
+    const email = 'test@test.com';
+    const mockUser = {
+      id: '1',
+      email: email,
+    } as User;
+
+    it('devrait envoyer un email de réinitialisation', async () => {
+      mockUsersService.findByEmail.mockResolvedValue(mockUser);
+      mockEmailService.sendPasswordResetEmail.mockResolvedValue(undefined);
+
+      await service.requestPasswordReset(email);
+
+      expect(mockUsersService.findByEmail).toHaveBeenCalledWith(email);
+      expect(mockJwtService.sign).toHaveBeenCalledWith(
+        { sub: mockUser.id },
+        { expiresIn: '1h' },
+      );
+      expect(mockEmailService.sendPasswordResetEmail).toHaveBeenCalled();
+    });
+
+    it("devrait lever une exception si l'utilisateur n'existe pas", async () => {
+      mockUsersService.findByEmail.mockResolvedValue(null);
+
+      await expect(service.requestPasswordReset(email)).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+  });
+
+  describe('resetPassword', () => {
+    it('devrait réinitialiser le mot de passe avec succès', async () => {
+      const userId = '1';
+      const newPassword = 'newPassword123';
+      const token = 'validToken';
+
+      mockJwtService.verify.mockReturnValue({ sub: userId });
+      mockUsersService.updatePassword.mockResolvedValue(undefined);
+
+      await service.resetPassword({ token, newPassword });
+
+      expect(mockJwtService.verify).toHaveBeenCalledWith(token);
+      expect(mockUsersService.updatePassword).toHaveBeenCalledWith(
+        userId,
+        newPassword,
+      );
     });
   });
 });

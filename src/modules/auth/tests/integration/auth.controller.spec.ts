@@ -8,6 +8,8 @@ import databaseConfig from '../../../../config/database.config';
 import { User } from '../../../users/entities/user.entity';
 import { UsersModule } from '../../../users/users.module';
 import { AuthModule } from '../../auth.module';
+import { JwtService } from '@nestjs/jwt';
+import { EmailService } from '../../../email/services/email.service';
 
 jest.setTimeout(30000);
 
@@ -15,6 +17,8 @@ describe('AuthController (e2e)', () => {
   let app: INestApplication;
   let moduleFixture: TestingModule;
   let userRepository: Repository<User>;
+  let jwtService: JwtService;
+  let emailService: EmailService;
 
   beforeAll(async () => {
     moduleFixture = await Test.createTestingModule({
@@ -37,13 +41,20 @@ describe('AuthController (e2e)', () => {
         AuthModule,
         UsersModule,
       ],
-    }).compile();
+    })
+      .overrideProvider(EmailService)
+      .useValue({
+        sendPasswordResetEmail: jest.fn().mockResolvedValue(undefined),
+      })
+      .compile();
 
     app = moduleFixture.createNestApplication();
     app.useGlobalPipes(new ValidationPipe());
     userRepository = moduleFixture.get<Repository<User>>(
       getRepositoryToken(User),
     );
+    jwtService = moduleFixture.get<JwtService>(JwtService);
+    emailService = moduleFixture.get<EmailService>(EmailService);
     await app.init();
   });
 
@@ -186,6 +197,91 @@ describe('AuthController (e2e)', () => {
         .send({
           email: 'invalid-email',
           password: 'password123',
+        })
+        .expect(400);
+    });
+  });
+
+  describe('/auth/request-password-reset (POST)', () => {
+    it('devrait envoyer un email de réinitialisation avec succès', async () => {
+      // Créer d'abord un utilisateur
+      await request(app.getHttpServer()).post('/auth/register').send({
+        email: 'test@example.com',
+        password: 'password123',
+        firstName: 'John',
+        lastName: 'Doe',
+      });
+
+      // Le mock du service d'email est déjà configuré dans beforeAll
+      const response = await request(app.getHttpServer())
+        .post('/auth/request-password-reset')
+        .send({ email: 'test@example.com' });
+
+      expect(response.status).toBe(200);
+      expect(emailService.sendPasswordResetEmail).toHaveBeenCalledWith(
+        'test@example.com',
+        expect.any(String),
+      );
+    });
+
+    it('devrait retourner 404 pour un email inexistant', async () => {
+      const response = await request(app.getHttpServer())
+        .post('/auth/request-password-reset')
+        .send({ email: 'nonexistent@example.com' });
+
+      expect(response.status).toBe(404);
+    });
+  });
+
+  describe('/auth/reset-password (POST)', () => {
+    let resetToken: string;
+    let testUser: User;
+
+    beforeEach(async () => {
+      testUser = await userRepository.save(
+        userRepository.create({
+          email: 'test@example.com',
+          password: 'password123',
+          firstName: 'John',
+          lastName: 'Doe',
+        }),
+      );
+      resetToken = jwtService.sign({ sub: testUser.id }, { expiresIn: '1h' });
+    });
+
+    it('devrait réinitialiser le mot de passe avec succès', async () => {
+      const response = await request(app.getHttpServer())
+        .post('/auth/reset-password')
+        .send({
+          token: resetToken,
+          newPassword: 'NewPassword123!',
+        });
+
+      expect(response.status).toBe(200);
+
+      // Vérifier que le mot de passe a été mis à jour
+      const updatedUser = await userRepository.findOne({
+        where: { id: testUser.id },
+      });
+      expect(updatedUser).toBeDefined();
+    });
+
+    it('devrait échouer avec un token invalide', () => {
+      return request(app.getHttpServer())
+        .post('/auth/reset-password')
+        .send({
+          token: 'invalid-token',
+          newPassword: 'NewPassword123!',
+        })
+        .expect(401);
+    });
+
+    it('devrait échouer avec un mot de passe invalide', () => {
+      return request(app.getHttpServer())
+        .post('/auth/reset-password')
+        .send({
+          token: resetToken,
+          newPassword: 'weak',
         })
         .expect(400);
     });

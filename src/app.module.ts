@@ -7,6 +7,7 @@ import databaseConfig from './config/database.config';
 import { validationSchema } from './config/env.validation';
 import { UsersModule } from './modules/users/users.module';
 import { AuthModule } from './modules/auth/auth.module';
+import { EmailModule } from './modules/email/email.module';
 
 @Module({
   imports: [
@@ -37,6 +38,7 @@ import { AuthModule } from './modules/auth/auth.module';
 
     UsersModule,
     AuthModule,
+    EmailModule,
   ],
   controllers: [],
   providers: [],
