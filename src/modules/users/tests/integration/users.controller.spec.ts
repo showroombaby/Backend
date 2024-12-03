@@ -249,17 +249,21 @@ describe('UsersController (e2e)', () => {
   });
 
   describe('/users/avatar', () => {
-    const testImageBuffer = Buffer.from('fake-image-content');
+    // Créer un petit buffer PNG valide
+    const testImageBuffer = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+      'base64',
+    );
 
     it('devrait uploader un avatar avec succès', async () => {
       const response = await request(app.getHttpServer())
         .post('/users/avatar')
         .set('Authorization', `Bearer ${authToken}`)
-        .attach('avatar', testImageBuffer, 'test-image.jpg')
-        .expect(200);
+        .attach('avatar', testImageBuffer, 'test-image.png')
+        .expect(201);
 
       expect(response.body).toHaveProperty('avatar');
-      expect(response.body.avatar).toMatch(/^[a-zA-Z0-9-]+\.jpg$/);
+      expect(response.body.avatar).toMatch(/^[a-zA-Z0-9-]+\.png$/);
 
       // Vérifier que l'utilisateur a été mis à jour
       const updatedUser = await userRepository.findOne({
@@ -270,10 +274,10 @@ describe('UsersController (e2e)', () => {
 
     it("devrait supprimer l'avatar avec succès", async () => {
       // D'abord uploader un avatar
-      const uploadResponse = await request(app.getHttpServer())
+      await request(app.getHttpServer())
         .post('/users/avatar')
         .set('Authorization', `Bearer ${authToken}`)
-        .attach('avatar', testImageBuffer, 'test-image.jpg');
+        .attach('avatar', testImageBuffer, 'test-image.png');
 
       // Ensuite le supprimer
       await request(app.getHttpServer())
@@ -298,7 +302,7 @@ describe('UsersController (e2e)', () => {
     it('devrait échouer sans authentification', () => {
       return request(app.getHttpServer())
         .post('/users/avatar')
-        .attach('avatar', testImageBuffer, 'test-image.jpg')
+        .attach('avatar', testImageBuffer, 'test-image.png')
         .expect(401);
     });
   });

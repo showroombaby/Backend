@@ -1,4 +1,9 @@
-import { Injectable, Logger } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  InternalServerErrorException,
+  Logger,
+} from '@nestjs/common';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as sharp from 'sharp';
@@ -25,11 +30,14 @@ export class FileService {
   }
 
   async saveAvatar(file: Express.Multer.File, userId: string): Promise<string> {
+    if (!file) {
+      throw new BadRequestException('No file uploaded');
+    }
+
     const filename = `${userId}-${Date.now()}${path.extname(file.originalname)}`;
     const filepath = path.join(this.uploadDir, filename);
 
     try {
-      // Optimiser et redimensionner l'image
       await sharp(file.buffer)
         .resize(this.maxWidth, this.maxHeight, {
           fit: 'inside',
@@ -42,7 +50,7 @@ export class FileService {
       return filename;
     } catch (error) {
       this.logger.error(`Erreur lors de la sauvegarde de l'avatar:`, error);
-      throw error;
+      throw new InternalServerErrorException('Error saving avatar');
     }
   }
 
