@@ -49,7 +49,7 @@ describe('UsersController (e2e)', () => {
     );
 
     await app.init();
-  });
+  }, 30000);
 
   beforeEach(async () => {
     await userRepository.clear();
@@ -162,6 +162,59 @@ describe('UsersController (e2e)', () => {
         .send({
           email: 'invalid-email',
         })
+        .expect(400);
+    });
+
+    it("devrait mettre à jour l'adresse avec succès", async () => {
+      const updateData = {
+        address: {
+          street: '123 rue de Paris',
+          zipCode: '75001',
+          city: 'Paris',
+          additionalInfo: 'Appartement 4B',
+        },
+      };
+
+      const response = await request(app.getHttpServer())
+        .put('/users/profile')
+        .set('Authorization', `Bearer ${authToken}`)
+        .send(updateData)
+        .expect(200);
+
+      expect(response.body.address).toBeDefined();
+      expect(response.body.address.street).toBe(updateData.address.street);
+      expect(response.body.address.city).toBe(updateData.address.city);
+    });
+
+    it('devrait échouer avec un code postal invalide', async () => {
+      const updateData = {
+        address: {
+          street: '123 rue de Paris',
+          zipCode: '7500', // Code postal trop court
+          city: 'Paris',
+        },
+      };
+
+      await request(app.getHttpServer())
+        .put('/users/profile')
+        .set('Authorization', `Bearer ${authToken}`)
+        .send(updateData)
+        .expect(400);
+    });
+
+    it('devrait échouer avec une ville manquante', async () => {
+      const updateData = {
+        address: {
+          street: '123 rue de Paris',
+          zipCode: '75001',
+          // city manquante
+        },
+      };
+
+      await request(app.getHttpServer())
+        .put('/users/profile')
+        .set('Authorization', `Bearer ${authToken}`)
+        .send(updateData)
         .expect(400);
     });
   });

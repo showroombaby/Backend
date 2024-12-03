@@ -12,6 +12,7 @@ import {
   UploadedFile,
   UseGuards,
   UseInterceptors,
+  BadRequestException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import {
@@ -27,6 +28,7 @@ import { UpdateProfileDto } from '../dto/update-profile.dto';
 import { User } from '../entities/user.entity';
 import { FileService } from '../services/file.service';
 import { UsersService } from '../services/users.service';
+import { multerConfig } from '../../../config/multer.config';
 
 @ApiTags('users')
 @Controller('users')
@@ -67,7 +69,7 @@ export class UsersController {
   }
 
   @Post('avatar')
-  @UseInterceptors(FileInterceptor('avatar'))
+  @UseInterceptors(FileInterceptor('avatar', multerConfig))
   @ApiConsumes('multipart/form-data')
   @ApiResponse({
     status: HttpStatus.OK,
@@ -79,6 +81,11 @@ export class UsersController {
     @UploadedFile() file: Express.Multer.File,
   ): Promise<User> {
     this.logger.debug(`Upload d'avatar pour l'utilisateur ${user.id}`);
+    this.logger.debug(`File details:`, file);
+
+    if (!file) {
+      throw new BadRequestException('No file uploaded');
+    }
 
     // Supprimer l'ancien avatar s'il existe
     if (user.avatar) {

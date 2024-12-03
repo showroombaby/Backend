@@ -72,6 +72,10 @@ export class UsersService {
       }
     }
 
+    if (updateProfileDto.address) {
+      this.logger.debug("Validation de l'adresse:", updateProfileDto.address);
+    }
+
     Object.assign(user, updateProfileDto);
     return this.userRepository.save(user);
   }

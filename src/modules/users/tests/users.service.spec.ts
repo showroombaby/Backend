@@ -113,6 +113,26 @@ describe('UsersService', () => {
         service.updateProfile('123', { email: 'new@example.com' }),
       ).rejects.toThrow(ConflictException);
     });
+
+    it("devrait mettre à jour l'adresse avec succès", async () => {
+      const mockUser = new User();
+      mockUser.id = '123';
+      const updateDto = {
+        address: {
+          street: '123 rue de Paris',
+          zipCode: '75001',
+          city: 'Paris',
+          additionalInfo: 'Appartement 4B',
+        },
+      };
+
+      mockRepository.findOne.mockResolvedValueOnce(mockUser);
+      mockRepository.save.mockResolvedValue({ ...mockUser, ...updateDto });
+
+      const result = await service.updateProfile('123', updateDto);
+
+      expect(result.address).toEqual(updateDto.address);
+    });
   });
 
   describe('deleteAccount', () => {

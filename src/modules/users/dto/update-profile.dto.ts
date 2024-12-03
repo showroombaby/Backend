@@ -7,7 +7,10 @@ import {
   Matches,
   MaxLength,
   MinLength,
+  ValidateNested,
 } from 'class-validator';
+import { Type } from 'class-transformer';
+import { AddressDto } from '../../auth/dto/register.dto';
 
 export class UpdateProfileDto {
   @ApiProperty({
@@ -61,4 +64,13 @@ export class UpdateProfileDto {
   @IsUrl({}, { message: "L'URL de l'avatar doit être une URL valide" })
   @IsOptional()
   avatar?: string;
+
+  @ApiProperty({
+    description: "Adresse de livraison de l'utilisateur",
+    required: false,
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => AddressDto)
+  address?: AddressDto;
 }

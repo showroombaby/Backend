@@ -41,6 +41,17 @@ export class User {
   @UpdateDateColumn()
   updatedAt: Date;
 
+  @Column('simple-json', {
+    nullable: true,
+    name: 'address',
+  })
+  address?: {
+    street: string;
+    zipCode: string;
+    city: string;
+    additionalInfo?: string;
+  };
+
   @BeforeInsert()
   @BeforeUpdate()
   async hashPassword() {
