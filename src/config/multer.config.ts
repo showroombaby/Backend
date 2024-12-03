@@ -1,8 +1,7 @@
 import { BadRequestException } from '@nestjs/common';
 import { MulterOptions } from '@nestjs/platform-express/multer/interfaces/multer-options.interface';
 import { Request } from 'express';
-import { diskStorage } from 'multer';
-import { extname } from 'path';
+import { memoryStorage } from 'multer';
 
 export const multerConfig: MulterOptions = {
   limits: {
@@ -23,11 +22,5 @@ export const multerConfig: MulterOptions = {
     }
     callback(null, true);
   },
-  storage: diskStorage({
-    destination: './uploads/avatars',
-    filename: (req: Request, file: Express.Multer.File, callback) => {
-      const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
-      callback(null, `${uniqueSuffix}${extname(file.originalname)}`);
-    },
-  }),
+  storage: memoryStorage(),
 };
