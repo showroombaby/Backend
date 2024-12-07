@@ -7,9 +7,12 @@ import {
   Column,
   CreateDateColumn,
   Entity,
+  OneToMany,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
+import { Product } from '../../products/entities/product.entity';
+import { Role } from '../enums/role.enum';
 
 @Entity('users')
 export class User {
@@ -35,6 +38,16 @@ export class User {
   @Column({ nullable: true })
   avatar: string;
 
+  @Column({
+    type: 'enum',
+    enum: Role,
+    default: Role.USER,
+  })
+  role: Role;
+
+  @Column({ default: false })
+  isEmailVerified: boolean;
+
   @CreateDateColumn()
   createdAt: Date;
 
@@ -51,6 +64,9 @@ export class User {
     city: string;
     additionalInfo?: string;
   };
+
+  @OneToMany(() => Product, (product) => product.seller)
+  products: Product[];
 
   @BeforeInsert()
   @BeforeUpdate()
