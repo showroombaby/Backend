@@ -8,6 +8,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { User } from '../../users/entities/user.entity';
 import { CreateProductDto } from '../dto/create-product.dto';
+import { ProductSortBy, SearchProductsDto } from '../dto/search-products.dto';
 import { UpdateProductDto } from '../dto/update-product.dto';
 import { Category } from '../entities/category.entity';
 import { ProductImage } from '../entities/product-image.entity';
@@ -68,17 +69,7 @@ export class ProductsService {
     }
   }
 
-  async findAll({
-    page = 1,
-    limit = 10,
-    category,
-    search,
-  }: {
-    page?: number;
-    limit?: number;
-    category?: string;
-    search?: string;
-  }) {
+  async findAll(searchDto: SearchProductsDto) {
     const query = this.productRepository
       .createQueryBuilder('product')
       .leftJoinAndSelect('product.category', 'category')
@@ -86,30 +77,65 @@ export class ProductsService {
       .leftJoinAndSelect('product.seller', 'seller')
       .where('product.status = :status', { status: ProductStatus.PUBLISHED });
 
-    if (category) {
-      query.andWhere('category.id = :categoryId', { categoryId: category });
-    }
-
-    if (search) {
+    // Recherche par terme
+    if (searchDto.search) {
       query.andWhere(
         '(product.title ILIKE :search OR product.description ILIKE :search)',
         {
-          search: `%${search}%`,
+          search: `%${searchDto.search}%`,
         },
       );
     }
 
+    // Filtre par catégorie
+    if (searchDto.categoryId) {
+      query.andWhere('category.id = :categoryId', {
+        categoryId: searchDto.categoryId,
+      });
+    }
+
+    // Filtre par prix
+    if (searchDto.minPrice !== undefined) {
+      query.andWhere('product.price >= :minPrice', {
+        minPrice: searchDto.minPrice,
+      });
+    }
+
+    if (searchDto.maxPrice !== undefined) {
+      query.andWhere('product.price <= :maxPrice', {
+        maxPrice: searchDto.maxPrice,
+      });
+    }
+
+    // Tri
+    switch (searchDto.sortBy) {
+      case ProductSortBy.PRICE_ASC:
+        query.orderBy('product.price', 'ASC');
+        break;
+      case ProductSortBy.PRICE_DESC:
+        query.orderBy('product.price', 'DESC');
+        break;
+      case ProductSortBy.DATE_ASC:
+        query.orderBy('product.createdAt', 'ASC');
+        break;
+      case ProductSortBy.DATE_DESC:
+      default:
+        query.orderBy('product.createdAt', 'DESC');
+        break;
+    }
+
+    // Pagination
     const [items, total] = await query
-      .skip((page - 1) * limit)
-      .take(limit)
+      .skip((searchDto.page - 1) * searchDto.limit)
+      .take(searchDto.limit)
       .getManyAndCount();
 
     return {
       items,
       total,
-      page,
-      limit,
-      pages: Math.ceil(total / limit),
+      page: searchDto.page,
+      limit: searchDto.limit,
+      pages: Math.ceil(total / searchDto.limit),
     };
   }
 

@@ -2,8 +2,9 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { User } from '../../../users/entities/user.entity';
+import { ProductSortBy } from '../../dto/search-products.dto';
 import { Category } from '../../entities/category.entity';
-import { Product } from '../../entities/product.entity';
+import { Product, ProductStatus } from '../../entities/product.entity';
 import { ProductImagesService } from '../../services/product-images.service';
 import { ProductsService } from '../../services/products.service';
 
@@ -22,6 +23,19 @@ describe('ProductsService', () => {
     id: '1',
     name: 'Poussettes',
   } as Category;
+
+  const mockProduct: Product = {
+    id: '1',
+    title: 'Poussette Yoyo',
+    description: 'Poussette en excellent état',
+    price: 299.99,
+    status: ProductStatus.PUBLISHED,
+    seller: mockUser,
+    category: mockCategory,
+    images: [],
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -135,6 +149,104 @@ describe('ProductsService', () => {
       await expect(
         service.create(createProductDto, [], mockUser),
       ).rejects.toThrow();
+    });
+  });
+
+  describe('findAll', () => {
+    it('should search products with filters', async () => {
+      const searchDto = {
+        search: 'poussette',
+        categoryId: '1',
+        minPrice: 100,
+        maxPrice: 500,
+        sortBy: ProductSortBy.PRICE_DESC,
+        page: 1,
+        limit: 10,
+      };
+
+      const mockQueryBuilder = {
+        leftJoinAndSelect: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        skip: jest.fn().mockReturnThis(),
+        take: jest.fn().mockReturnThis(),
+        getManyAndCount: jest.fn().mockResolvedValue([[mockProduct], 1]),
+      };
+
+      jest
+        .spyOn(productRepository, 'createQueryBuilder')
+        .mockReturnValue(mockQueryBuilder as any);
+
+      const result = await service.findAll(searchDto);
+
+      expect(mockQueryBuilder.leftJoinAndSelect).toHaveBeenCalledTimes(3);
+      expect(mockQueryBuilder.where).toHaveBeenCalledWith(
+        'product.status = :status',
+        { status: ProductStatus.PUBLISHED },
+      );
+      expect(mockQueryBuilder.andWhere).toHaveBeenCalledWith(
+        '(product.title ILIKE :search OR product.description ILIKE :search)',
+        { search: '%poussette%' },
+      );
+      expect(mockQueryBuilder.andWhere).toHaveBeenCalledWith(
+        'category.id = :categoryId',
+        { categoryId: '1' },
+      );
+      expect(mockQueryBuilder.andWhere).toHaveBeenCalledWith(
+        'product.price >= :minPrice',
+        { minPrice: 100 },
+      );
+      expect(mockQueryBuilder.andWhere).toHaveBeenCalledWith(
+        'product.price <= :maxPrice',
+        { maxPrice: 500 },
+      );
+      expect(mockQueryBuilder.orderBy).toHaveBeenCalledWith(
+        'product.price',
+        'DESC',
+      );
+      expect(mockQueryBuilder.skip).toHaveBeenCalledWith(0);
+      expect(mockQueryBuilder.take).toHaveBeenCalledWith(10);
+
+      expect(result).toEqual({
+        items: [mockProduct],
+        total: 1,
+        page: 1,
+        limit: 10,
+        pages: 1,
+      });
+    });
+
+    it('should return empty results when no products match', async () => {
+      const searchDto = {
+        search: 'nonexistent',
+        page: 1,
+        limit: 10,
+      };
+
+      const mockQueryBuilder = {
+        leftJoinAndSelect: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        skip: jest.fn().mockReturnThis(),
+        take: jest.fn().mockReturnThis(),
+        getManyAndCount: jest.fn().mockResolvedValue([[], 0]),
+      };
+
+      jest
+        .spyOn(productRepository, 'createQueryBuilder')
+        .mockReturnValue(mockQueryBuilder as any);
+
+      const result = await service.findAll(searchDto);
+
+      expect(result).toEqual({
+        items: [],
+        total: 0,
+        page: 1,
+        limit: 10,
+        pages: 0,
+      });
     });
   });
 });

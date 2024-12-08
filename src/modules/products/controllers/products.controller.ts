@@ -16,7 +16,6 @@ import { FileFieldsInterceptor } from '@nestjs/platform-express';
 import {
   ApiConsumes,
   ApiOperation,
-  ApiQuery,
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
@@ -24,6 +23,7 @@ import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { User } from '../../users/entities/user.entity';
 import { CreateProductDto } from '../dto/create-product.dto';
+import { SearchProductsDto } from '../dto/search-products.dto';
 import { UpdateProductDto } from '../dto/update-product.dto';
 import { Category } from '../entities/category.entity';
 import { Product } from '../entities/product.entity';
@@ -46,23 +46,14 @@ export class ProductsController {
   }
 
   @Get()
-  @ApiOperation({ summary: 'Récupérer la liste des annonces' })
-  @ApiQuery({ name: 'page', required: false, type: Number })
-  @ApiQuery({ name: 'limit', required: false, type: Number })
-  @ApiQuery({ name: 'category', required: false, type: String })
-  @ApiQuery({ name: 'search', required: false, type: String })
+  @ApiOperation({ summary: 'Rechercher des produits' })
   @ApiResponse({
     status: 200,
-    description: 'Liste des annonces récupérée avec succès',
-    type: [Product],
+    description: 'Liste des produits trouvés',
+    type: Product,
   })
-  async findAll(
-    @Query('page') page = 1,
-    @Query('limit') limit = 10,
-    @Query('category') category?: string,
-    @Query('search') search?: string,
-  ) {
-    return this.productsService.findAll({ page, limit, category, search });
+  async findAll(@Query() searchDto: SearchProductsDto) {
+    return this.productsService.findAll(searchDto);
   }
 
   @Get(':id')
