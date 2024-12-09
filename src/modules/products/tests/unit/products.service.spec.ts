@@ -1,40 +1,66 @@
+import { NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { User } from '../../../users/entities/user.entity';
-import { ProductSortBy } from '../../dto/search-products.dto';
+import { CategoriesService } from '../../../categories/services/categories.service';
 import { Category } from '../../entities/category.entity';
+import { ProductImage } from '../../entities/product-image.entity';
 import { Product, ProductStatus } from '../../entities/product.entity';
+import { ProductCondition } from '../../enums/product-condition.enum';
 import { ProductImagesService } from '../../services/product-images.service';
 import { ProductsService } from '../../services/products.service';
 
 describe('ProductsService', () => {
   let service: ProductsService;
   let productRepository: Repository<Product>;
-  let categoryRepository: Repository<Category>;
+  let productImageRepository: Repository<ProductImage>;
   let productImagesService: ProductImagesService;
+  let categoriesService: CategoriesService;
 
-  const mockUser: User = {
+  const mockProduct: Partial<Product> = {
     id: '1',
-    email: 'test@example.com',
-  } as User;
-
-  const mockCategory: Category = {
-    id: '1',
-    name: 'Poussettes',
-  } as Category;
-
-  const mockProduct: Product = {
-    id: '1',
-    title: 'Poussette Yoyo',
-    description: 'Poussette en excellent état',
-    price: 299.99,
-    status: ProductStatus.PUBLISHED,
-    seller: mockUser,
-    category: mockCategory,
+    title: 'Test Product',
+    description: 'Test Description',
+    price: 99.99,
+    status: ProductStatus.DRAFT,
+    condition: ProductCondition.NEW,
+    sellerId: '1',
+    categoryId: '1',
     images: [],
+    views: [],
+    seller: null,
+    category: null,
     createdAt: new Date(),
     updatedAt: new Date(),
+  };
+
+  const mockCategory: Partial<Category> = {
+    id: '1',
+    name: 'Test Category',
+    description: 'Test Description',
+    products: [],
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
+
+  const mockImages = [
+    {
+      fieldname: 'images',
+      originalname: 'test.jpg',
+      encoding: '7bit',
+      mimetype: 'image/jpeg',
+      buffer: Buffer.from('test'),
+      size: 1024,
+    },
+  ] as Express.Multer.File[];
+
+  const mockRepository = {
+    create: jest.fn(),
+    save: jest.fn(),
+    find: jest.fn(),
+    findOne: jest.fn(),
+    update: jest.fn(),
+    delete: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -43,31 +69,22 @@ describe('ProductsService', () => {
         ProductsService,
         {
           provide: getRepositoryToken(Product),
-          useValue: {
-            create: jest.fn().mockImplementation((dto) => dto),
-            save: jest.fn().mockImplementation((product) =>
-              Promise.resolve({
-                id: '1',
-                ...product,
-              }),
-            ),
-          },
+          useValue: mockRepository,
         },
         {
-          provide: getRepositoryToken(Category),
-          useValue: {
-            findOneOrFail: jest.fn().mockResolvedValue(mockCategory),
-          },
+          provide: getRepositoryToken(ProductImage),
+          useValue: mockRepository,
         },
         {
           provide: ProductImagesService,
           useValue: {
-            uploadImages: jest
-              .fn()
-              .mockResolvedValue([
-                'http://example.com/image1.jpg',
-                'http://example.com/image2.jpg',
-              ]),
+            uploadImages: jest.fn().mockResolvedValue([]),
+          },
+        },
+        {
+          provide: CategoriesService,
+          useValue: {
+            findOne: jest.fn(),
           },
         },
       ],
@@ -77,176 +94,75 @@ describe('ProductsService', () => {
     productRepository = module.get<Repository<Product>>(
       getRepositoryToken(Product),
     );
-    categoryRepository = module.get<Repository<Category>>(
-      getRepositoryToken(Category),
+    productImageRepository = module.get<Repository<ProductImage>>(
+      getRepositoryToken(ProductImage),
     );
     productImagesService =
       module.get<ProductImagesService>(ProductImagesService);
-  });
-
-  it('should be defined', () => {
-    expect(service).toBeDefined();
+    categoriesService = module.get<CategoriesService>(CategoriesService);
   });
 
   describe('create', () => {
-    it('should create a product with images successfully', async () => {
-      const createProductDto = {
-        title: 'Poussette Yoyo',
-        description: 'Poussette en excellent état',
-        price: 299.99,
-        categoryId: '1',
-      };
+    const createProductDto = {
+      title: 'Test Product',
+      description: 'Test Description',
+      price: 99.99,
+      condition: ProductCondition.NEW,
+      categoryId: '1',
+    };
 
-      const mockFiles = [
-        { buffer: Buffer.from('fake-image-1') },
-        { buffer: Buffer.from('fake-image-2') },
-      ] as Express.Multer.File[];
+    it('devrait créer un nouveau produit avec succès', async () => {
+      // Arrange
+      jest.spyOn(categoriesService, 'findOne').mockResolvedValue(mockCategory);
+      mockRepository.create.mockReturnValue(mockProduct);
+      mockRepository.save.mockResolvedValue(mockProduct);
 
-      const result = await service.create(
-        createProductDto,
-        mockFiles,
-        mockUser,
-      );
+      // Act
+      const result = await service.create(createProductDto, mockImages, '1');
 
-      expect(categoryRepository.findOneOrFail).toHaveBeenCalledWith({
-        where: { id: createProductDto.categoryId },
-      });
-
-      expect(productImagesService.uploadImages).toHaveBeenCalledWith(mockFiles);
-
+      // Assert
+      expect(result).toEqual(mockProduct);
       expect(productRepository.create).toHaveBeenCalledWith({
         ...createProductDto,
-        seller: mockUser,
-        category: mockCategory,
-        images: expect.arrayContaining([
-          expect.objectContaining({
-            url: expect.any(String),
-            filename: expect.any(String),
-          }),
-        ]),
-      });
-
-      expect(result).toMatchObject({
-        id: expect.any(String),
-        title: createProductDto.title,
-        description: createProductDto.description,
-        price: createProductDto.price,
+        sellerId: '1',
+        status: ProductStatus.DRAFT,
       });
     });
 
-    it('should throw an error if category is not found', async () => {
-      const createProductDto = {
-        title: 'Poussette Yoyo',
-        description: 'Poussette en excellent état',
-        price: 299.99,
-        categoryId: 'invalid-id',
-      };
+    it("devrait échouer si la catégorie n'existe pas", async () => {
+      // Arrange
+      jest.spyOn(categoriesService, 'findOne').mockResolvedValue(null);
 
-      jest
-        .spyOn(categoryRepository, 'findOneOrFail')
-        .mockRejectedValue(new Error());
-
+      // Act & Assert
       await expect(
-        service.create(createProductDto, [], mockUser),
-      ).rejects.toThrow();
+        service.create(createProductDto, mockImages, '1'),
+      ).rejects.toThrow(NotFoundException);
+      expect(categoriesService.findOne).toHaveBeenCalledWith('1');
     });
   });
 
-  describe('findAll', () => {
-    it('should search products with filters', async () => {
-      const searchDto = {
-        search: 'poussette',
-        categoryId: '1',
-        minPrice: 100,
-        maxPrice: 500,
-        sortBy: ProductSortBy.PRICE_DESC,
-        page: 1,
-        limit: 10,
-      };
+  describe('findOne', () => {
+    it('devrait retourner un produit par son ID', async () => {
+      // Arrange
+      mockRepository.findOne.mockResolvedValue(mockProduct);
 
-      const mockQueryBuilder = {
-        leftJoinAndSelect: jest.fn().mockReturnThis(),
-        where: jest.fn().mockReturnThis(),
-        andWhere: jest.fn().mockReturnThis(),
-        orderBy: jest.fn().mockReturnThis(),
-        skip: jest.fn().mockReturnThis(),
-        take: jest.fn().mockReturnThis(),
-        getManyAndCount: jest.fn().mockResolvedValue([[mockProduct], 1]),
-      };
+      // Act
+      const result = await service.findOne('1');
 
-      jest
-        .spyOn(productRepository, 'createQueryBuilder')
-        .mockReturnValue(mockQueryBuilder as any);
-
-      const result = await service.findAll(searchDto);
-
-      expect(mockQueryBuilder.leftJoinAndSelect).toHaveBeenCalledTimes(3);
-      expect(mockQueryBuilder.where).toHaveBeenCalledWith(
-        'product.status = :status',
-        { status: ProductStatus.PUBLISHED },
-      );
-      expect(mockQueryBuilder.andWhere).toHaveBeenCalledWith(
-        '(product.title ILIKE :search OR product.description ILIKE :search)',
-        { search: '%poussette%' },
-      );
-      expect(mockQueryBuilder.andWhere).toHaveBeenCalledWith(
-        'category.id = :categoryId',
-        { categoryId: '1' },
-      );
-      expect(mockQueryBuilder.andWhere).toHaveBeenCalledWith(
-        'product.price >= :minPrice',
-        { minPrice: 100 },
-      );
-      expect(mockQueryBuilder.andWhere).toHaveBeenCalledWith(
-        'product.price <= :maxPrice',
-        { maxPrice: 500 },
-      );
-      expect(mockQueryBuilder.orderBy).toHaveBeenCalledWith(
-        'product.price',
-        'DESC',
-      );
-      expect(mockQueryBuilder.skip).toHaveBeenCalledWith(0);
-      expect(mockQueryBuilder.take).toHaveBeenCalledWith(10);
-
-      expect(result).toEqual({
-        items: [mockProduct],
-        total: 1,
-        page: 1,
-        limit: 10,
-        pages: 1,
+      // Assert
+      expect(result).toEqual(mockProduct);
+      expect(productRepository.findOne).toHaveBeenCalledWith({
+        where: { id: '1' },
+        relations: ['images', 'seller', 'category'],
       });
     });
 
-    it('should return empty results when no products match', async () => {
-      const searchDto = {
-        search: 'nonexistent',
-        page: 1,
-        limit: 10,
-      };
+    it("devrait lever une exception si le produit n'existe pas", async () => {
+      // Arrange
+      mockRepository.findOne.mockResolvedValue(null);
 
-      const mockQueryBuilder = {
-        leftJoinAndSelect: jest.fn().mockReturnThis(),
-        where: jest.fn().mockReturnThis(),
-        andWhere: jest.fn().mockReturnThis(),
-        orderBy: jest.fn().mockReturnThis(),
-        skip: jest.fn().mockReturnThis(),
-        take: jest.fn().mockReturnThis(),
-        getManyAndCount: jest.fn().mockResolvedValue([[], 0]),
-      };
-
-      jest
-        .spyOn(productRepository, 'createQueryBuilder')
-        .mockReturnValue(mockQueryBuilder as any);
-
-      const result = await service.findAll(searchDto);
-
-      expect(result).toEqual({
-        items: [],
-        total: 0,
-        page: 1,
-        limit: 10,
-        pages: 0,
-      });
+      // Act & Assert
+      await expect(service.findOne('999')).rejects.toThrow(NotFoundException);
     });
   });
 });

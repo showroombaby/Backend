@@ -2,14 +2,17 @@ import {
   Column,
   CreateDateColumn,
   Entity,
+  JoinColumn,
   ManyToOne,
   OneToMany,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
 import { User } from '../../users/entities/user.entity';
+import { ProductCondition } from '../enums/product-condition.enum';
 import { Category } from './category.entity';
 import { ProductImage } from './product-image.entity';
+import { ProductView } from './product-view.entity';
 
 export enum ProductStatus {
   DRAFT = 'draft',
@@ -33,16 +36,48 @@ export class Product {
   price: number;
 
   @Column({
-    type: 'enum',
+    type: 'varchar',
     enum: ProductStatus,
     default: ProductStatus.DRAFT,
+    name: 'status',
   })
   status: ProductStatus;
 
+  @Column({
+    type: 'varchar',
+    enum: ProductCondition,
+    nullable: false,
+    name: 'condition',
+  })
+  condition: ProductCondition;
+
+  @Column('decimal', { precision: 10, scale: 6, nullable: true })
+  latitude?: number;
+
+  @Column('decimal', { precision: 10, scale: 6, nullable: true })
+  longitude?: number;
+
+  @Column({ nullable: true })
+  address?: string;
+
+  @Column({ nullable: true })
+  city?: string;
+
+  @Column({ nullable: true })
+  zipCode?: string;
+
+  @Column({ name: 'seller_id' })
+  sellerId: string;
+
   @ManyToOne(() => User, (user) => user.products)
+  @JoinColumn({ name: 'seller_id' })
   seller: User;
 
+  @Column({ name: 'category_id' })
+  categoryId: string;
+
   @ManyToOne(() => Category, (category) => category.products)
+  @JoinColumn({ name: 'category_id' })
   category: Category;
 
   @OneToMany(() => ProductImage, (image) => image.product, {
@@ -50,9 +85,15 @@ export class Product {
   })
   images: ProductImage[];
 
-  @CreateDateColumn()
+  @OneToMany(() => ProductView, (view) => view.product)
+  views: ProductView[];
+
+  @Column({ default: 0 })
+  viewCount: number;
+
+  @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 
-  @UpdateDateColumn()
+  @UpdateDateColumn({ name: 'updated_at' })
   updatedAt: Date;
 }

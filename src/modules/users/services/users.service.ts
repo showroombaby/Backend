@@ -1,16 +1,17 @@
 import {
-  ConflictException,
+  BadRequestException,
   Injectable,
   Logger,
   NotFoundException,
-  UnauthorizedException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import * as bcrypt from 'bcrypt';
 import { Repository } from 'typeorm';
 import { RegisterDto } from '../../auth/dto/register.dto';
 import { ChangePasswordDto } from '../dto/change-password.dto';
 import { UpdateProfileDto } from '../dto/update-profile.dto';
 import { User } from '../entities/user.entity';
+import { Role } from '../enums/role.enum';
 
 @Injectable()
 export class UsersService {
@@ -22,115 +23,127 @@ export class UsersService {
   ) {}
 
   async create(registerDto: RegisterDto): Promise<User> {
-    this.logger.debug(
-      `Création d'un utilisateur avec email: ${registerDto.email}`,
-    );
+    try {
+      const user = this.userRepository.create({
+        ...registerDto,
+        role: Role.USER,
+      });
 
-    const existingUser = await this.findByEmail(registerDto.email);
-    if (existingUser) {
-      throw new ConflictException('Email already exists');
+      return await this.userRepository.save(user);
+    } catch (error) {
+      this.logger.error("Erreur lors de la création de l'utilisateur:", error);
+      throw error;
     }
-
-    const user = this.userRepository.create(registerDto);
-    const savedUser = await this.userRepository.save(user);
-    this.logger.debug(`Utilisateur créé avec ID: ${savedUser.id}`);
-
-    return savedUser;
-  }
-
-  async findById(id: string): Promise<User> {
-    this.logger.debug(`Recherche de l'utilisateur avec ID: ${id}`);
-    const user = await this.userRepository.findOne({ where: { id } });
-    if (!user) {
-      this.logger.debug(`Utilisateur non trouvé avec ID: ${id}`);
-      throw new NotFoundException('User not found');
-    }
-    return user;
   }
 
   async findByEmail(email: string): Promise<User | null> {
-    this.logger.debug(`Recherche de l'utilisateur avec email: ${email}`);
-    const user = await this.userRepository.findOne({ where: { email } });
-    if (user) {
-      this.logger.debug(`Utilisateur trouvé avec email: ${email}`);
-    } else {
-      this.logger.debug(`Utilisateur non trouvé avec email: ${email}`);
+    try {
+      return await this.userRepository.findOne({ where: { email } });
+    } catch (error) {
+      this.logger.error('Erreur lors de la recherche par email:', error);
+      throw error;
     }
-    return user;
   }
 
-  async updateProfile(
-    id: string,
-    updateProfileDto: UpdateProfileDto,
-  ): Promise<User> {
-    const user = await this.findById(id);
-
-    if (updateProfileDto.email && updateProfileDto.email !== user.email) {
-      const existingUser = await this.findByEmail(updateProfileDto.email);
-      if (existingUser) {
-        throw new ConflictException('Email already exists');
+  async findById(id: string): Promise<User> {
+    try {
+      const user = await this.userRepository.findOne({ where: { id } });
+      if (!user) {
+        throw new NotFoundException('User not found');
       }
+      return user;
+    } catch (error) {
+      this.logger.error('Erreur lors de la recherche par ID:', error);
+      throw error;
     }
-
-    if (updateProfileDto.address) {
-      this.logger.debug("Validation de l'adresse:", updateProfileDto.address);
-    }
-
-    Object.assign(user, updateProfileDto);
-    return this.userRepository.save(user);
   }
 
-  async changePassword(
-    id: string,
-    changePasswordDto: ChangePasswordDto,
-  ): Promise<void> {
-    this.logger.debug(
-      `Tentative de changement de mot de passe pour l'utilisateur ${id}`,
-    );
-    const user = await this.findById(id);
+  async updateProfile(userId: string, updateProfileDto: UpdateProfileDto) {
+    try {
+      const user = await this.userRepository.findOne({
+        where: { id: userId },
+      });
 
-    this.logger.debug('Validation du mot de passe actuel');
-    this.logger.debug(
-      `Mot de passe fourni: ${changePasswordDto.currentPassword}`,
-    );
-    this.logger.debug(`Mot de passe haché en DB: ${user.password}`);
+      if (!user) {
+        throw new NotFoundException('User not found');
+      }
 
-    const isCurrentPasswordValid = await user.validatePassword(
-      changePasswordDto.currentPassword,
-    );
+      // Mettre à jour uniquement les champs fournis
+      Object.assign(user, updateProfileDto);
 
-    this.logger.debug(`Résultat de la validation: ${isCurrentPasswordValid}`);
+      // Sauvegarder les modifications
+      const updatedUser = await this.userRepository.save(user);
 
-    if (!isCurrentPasswordValid) {
-      this.logger.error('Mot de passe actuel incorrect');
-      throw new UnauthorizedException('Mot de passe actuel incorrect');
+      // Retourner l'utilisateur mis à jour sans le mot de passe
+      const { password, ...result } = updatedUser;
+      return result;
+    } catch (error) {
+      this.logger.error('Erreur lors de la mise à jour du profil:', error);
+      throw error;
     }
+  }
 
-    if (changePasswordDto.newPassword !== changePasswordDto.confirmPassword) {
-      this.logger.error('Les mots de passe ne correspondent pas');
-      throw new UnauthorizedException(
-        'Le nouveau mot de passe et sa confirmation ne correspondent pas',
+  async changePassword(userId: string, changePasswordDto: ChangePasswordDto) {
+    try {
+      const user = await this.userRepository.findOne({
+        where: { id: userId },
+        select: ['id', 'password'], // Sélectionner explicitement le mot de passe
+      });
+
+      if (!user) {
+        throw new NotFoundException('User not found');
+      }
+
+      // Vérifier le mot de passe actuel
+      const isPasswordValid = await bcrypt.compare(
+        changePasswordDto.currentPassword,
+        user.password,
       );
+
+      if (!isPasswordValid) {
+        throw new BadRequestException('Current password is incorrect');
+      }
+
+      // Vérifier que le nouveau mot de passe et la confirmation correspondent
+      if (changePasswordDto.newPassword !== changePasswordDto.confirmPassword) {
+        throw new BadRequestException(
+          'New password and confirmation do not match',
+        );
+      }
+
+      // Hasher le nouveau mot de passe
+      const hashedPassword = await bcrypt.hash(
+        changePasswordDto.newPassword,
+        10,
+      );
+
+      // Mettre à jour le mot de passe
+      user.password = hashedPassword;
+      await this.userRepository.save(user);
+    } catch (error) {
+      this.logger.error('Erreur lors du changement de mot de passe:', error);
+      throw error;
     }
-
-    this.logger.debug('Mise à jour du mot de passe');
-    const updatedUser = this.userRepository.create({
-      ...user,
-      password: changePasswordDto.newPassword,
-    });
-    await this.userRepository.save(updatedUser);
-    this.logger.debug('Mot de passe mis à jour avec succès');
   }
 
-  async deleteAccount(id: string): Promise<void> {
-    const user = await this.findById(id);
-    await this.userRepository.remove(user);
+  async verifyEmail(userId: string): Promise<void> {
+    try {
+      const user = await this.findById(userId);
+      user.isEmailVerified = true;
+      await this.userRepository.save(user);
+    } catch (error) {
+      this.logger.error("Erreur lors de la vérification de l'email:", error);
+      throw error;
+    }
   }
 
-  async updatePassword(id: string, newPassword: string): Promise<void> {
-    const user = await this.findById(id);
-    user.password = newPassword;
-    await this.userRepository.save(user);
-    this.logger.debug(`Mot de passe mis à jour pour l'utilisateur ${id}`);
+  async deleteAccount(userId: string): Promise<void> {
+    try {
+      const user = await this.findById(userId);
+      await this.userRepository.remove(user);
+    } catch (error) {
+      this.logger.error('Erreur lors de la suppression du compte:', error);
+      throw error;
+    }
   }
 }

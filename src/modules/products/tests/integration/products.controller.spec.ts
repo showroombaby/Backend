@@ -1,150 +1,195 @@
-import { INestApplication, ValidationPipe } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
-import { JwtService } from '@nestjs/jwt';
-import { Test, TestingModule } from '@nestjs/testing';
-import { TypeOrmModule, getRepositoryToken } from '@nestjs/typeorm';
+import { INestApplication } from '@nestjs/common';
+import { Test } from '@nestjs/testing';
+import { getRepositoryToken } from '@nestjs/typeorm';
+import * as path from 'path';
 import * as request from 'supertest';
 import { Repository } from 'typeorm';
-import { StorageService } from '../../../storage/services/storage.service';
+import { TestModule } from '../../../../common/test/test.module';
 import { User } from '../../../users/entities/user.entity';
+import { Role } from '../../../users/enums/role.enum';
 import { Category } from '../../entities/category.entity';
-import { ProductImage } from '../../entities/product-image.entity';
-import { Product } from '../../entities/product.entity';
+import { Product, ProductStatus } from '../../entities/product.entity';
+import { ProductCondition } from '../../enums/product-condition.enum';
 import { ProductsModule } from '../../products.module';
 
-describe('ProductsController (e2e)', () => {
+describe('ProductsController (Integration)', () => {
   let app: INestApplication;
   let userRepository: Repository<User>;
   let categoryRepository: Repository<Category>;
-  let testUser: User;
-  let testCategory: Category;
+  let productRepository: Repository<Product>;
+  let userToken: string;
+  let category: Category;
+
+  const testUser = {
+    email: 'test@example.com',
+    password: 'Password123!',
+    firstName: 'Test',
+    lastName: 'User',
+    role: Role.USER,
+  };
+
+  const testCategory = {
+    name: 'Test Category',
+    description: 'Test Description',
+  };
+
+  const testProduct = {
+    title: 'Test Product',
+    description: 'Test Description',
+    price: 99.99,
+    condition: ProductCondition.NEW,
+  };
+
+  const testImagePath = path.join(
+    __dirname,
+    '..',
+    '..',
+    '..',
+    '..',
+    'test',
+    'fixtures',
+    'test-image.jpg',
+  );
 
   beforeAll(async () => {
-    const moduleFixture: TestingModule = await Test.createTestingModule({
-      imports: [
-        ConfigModule.forRoot({
-          isGlobal: true,
-        }),
-        TypeOrmModule.forRoot({
-          type: 'sqlite',
-          database: ':memory:',
-          entities: [Product, ProductImage, Category, User],
-          synchronize: true,
-        }),
-        ProductsModule,
-      ],
-    })
-      .overrideProvider(StorageService)
-      .useValue({
-        uploadFile: jest.fn().mockResolvedValue('http://example.com/image.jpg'),
-      })
-      .compile();
+    const moduleRef = await Test.createTestingModule({
+      imports: [TestModule, ProductsModule],
+    }).compile();
 
-    app = moduleFixture.createNestApplication();
-    app.useGlobalPipes(new ValidationPipe());
-
-    userRepository = moduleFixture.get<Repository<User>>(
-      getRepositoryToken(User),
-    );
-    categoryRepository = moduleFixture.get<Repository<Category>>(
+    app = moduleRef.createNestApplication();
+    userRepository = moduleRef.get<Repository<User>>(getRepositoryToken(User));
+    categoryRepository = moduleRef.get<Repository<Category>>(
       getRepositoryToken(Category),
+    );
+    productRepository = moduleRef.get<Repository<Product>>(
+      getRepositoryToken(Product),
     );
 
     await app.init();
 
-    // Créer un utilisateur et une catégorie de test
-    testUser = await createTestUser(userRepository);
-    testCategory = await createTestCategory(categoryRepository);
+    // Créer l'utilisateur de test
+    const user = userRepository.create(testUser);
+    await userRepository.save(user);
+
+    // Créer la catégorie de test
+    category = await categoryRepository.save(testCategory);
+
+    // Obtenir le token
+    const loginResponse = await request(app.getHttpServer())
+      .post('/auth/login')
+      .send({
+        email: testUser.email,
+        password: testUser.password,
+      });
+    userToken = loginResponse.body.access_token;
   });
 
-  describe('POST /products', () => {
-    it('devrait créer un nouveau produit avec succès', async () => {
-      const createProductDto = {
-        title: 'Poussette Yoyo',
-        description: 'Poussette en excellent état',
-        price: 299.99,
-        categoryId: testCategory.id,
-      };
-
-      const response = await request(app.getHttpServer())
-        .post('/products')
-        .field('title', createProductDto.title)
-        .field('description', createProductDto.description)
-        .field('price', createProductDto.price)
-        .field('categoryId', createProductDto.categoryId)
-        .attach('images', Buffer.from('fake-image'), 'image.jpg')
-        .set('Authorization', `Bearer ${generateTestToken(testUser)}`)
-        .expect(201);
-
-      expect(response.body).toMatchObject({
-        title: createProductDto.title,
-        description: createProductDto.description,
-        price: createProductDto.price,
-        seller: {
-          id: testUser.id,
-        },
-        category: {
-          id: testCategory.id,
-        },
-        images: expect.arrayContaining([
-          expect.objectContaining({
-            url: expect.any(String),
-          }),
-        ]),
-      });
-    });
-
-    it('devrait échouer si les images sont manquantes', () => {
-      const createProductDto = {
-        title: 'Poussette Yoyo',
-        description: 'Poussette en excellent état',
-        price: 299.99,
-        categoryId: testCategory.id,
-      };
-
-      return request(app.getHttpServer())
-        .post('/products')
-        .field('title', createProductDto.title)
-        .field('description', createProductDto.description)
-        .field('price', createProductDto.price)
-        .field('categoryId', createProductDto.categoryId)
-        .set('Authorization', `Bearer ${generateTestToken(testUser)}`)
-        .expect(400);
-    });
+  beforeEach(async () => {
+    // Nettoyer la base de données avant chaque test
+    await productRepository.query('DELETE FROM products');
   });
 
   afterAll(async () => {
     await app.close();
   });
+
+  describe('POST /products', () => {
+    it('devrait créer un nouveau produit', async () => {
+      const response = await request(app.getHttpServer())
+        .post('/products')
+        .set('Authorization', `Bearer ${userToken}`)
+        .field('title', testProduct.title)
+        .field('description', testProduct.description)
+        .field('price', testProduct.price)
+        .field('condition', testProduct.condition)
+        .field('categoryId', category.id)
+        .attach('images', testImagePath)
+        .expect(201);
+
+      expect(response.body).toMatchObject({
+        title: testProduct.title,
+        description: testProduct.description,
+        price: testProduct.price,
+        condition: testProduct.condition,
+        status: ProductStatus.DRAFT,
+        categoryId: category.id,
+      });
+    });
+
+    it('devrait échouer sans authentification', async () => {
+      await request(app.getHttpServer())
+        .post('/products')
+        .field('title', testProduct.title)
+        .field('description', testProduct.description)
+        .field('price', testProduct.price)
+        .field('condition', testProduct.condition)
+        .field('categoryId', category.id)
+        .attach('images', testImagePath)
+        .expect(401);
+    });
+  });
+
+  describe('GET /products', () => {
+    beforeEach(async () => {
+      // Créer quelques produits de test
+      await productRepository.save([
+        {
+          ...testProduct,
+          sellerId: testUser.id,
+          categoryId: category.id,
+          status: ProductStatus.PUBLISHED,
+        },
+        {
+          ...testProduct,
+          title: 'Another Product',
+          sellerId: testUser.id,
+          categoryId: category.id,
+          status: ProductStatus.PUBLISHED,
+        },
+      ]);
+    });
+
+    it('devrait retourner une liste de produits', async () => {
+      const response = await request(app.getHttpServer())
+        .get('/products')
+        .expect(200);
+
+      expect(response.body.items).toHaveLength(2);
+      expect(response.body.items[0]).toMatchObject({
+        title: expect.any(String),
+        description: expect.any(String),
+        price: expect.any(Number),
+        condition: expect.any(String),
+        status: expect.any(String),
+      });
+    });
+
+    it('devrait filtrer les produits par catégorie', async () => {
+      const response = await request(app.getHttpServer())
+        .get(`/products?categoryId=${category.id}`)
+        .expect(200);
+
+      expect(response.body.items).toHaveLength(2);
+      expect(response.body.items[0].categoryId).toBe(category.id);
+    });
+
+    it('devrait filtrer les produits par prix', async () => {
+      const response = await request(app.getHttpServer())
+        .get('/products?minPrice=50&maxPrice=150')
+        .expect(200);
+
+      expect(response.body.items).toHaveLength(2);
+      expect(response.body.items[0].price).toBeGreaterThanOrEqual(50);
+      expect(response.body.items[0].price).toBeLessThanOrEqual(150);
+    });
+
+    it('devrait filtrer les produits par condition', async () => {
+      const response = await request(app.getHttpServer())
+        .get(`/products?condition=${ProductCondition.NEW}`)
+        .expect(200);
+
+      expect(response.body.items).toHaveLength(2);
+      expect(response.body.items[0].condition).toBe(ProductCondition.NEW);
+    });
+  });
 });
-
-async function createTestUser(userRepository: Repository<User>): Promise<User> {
-  const user = userRepository.create({
-    email: 'test@example.com',
-    password: 'password123',
-    firstName: 'John',
-    lastName: 'Doe',
-  });
-  return userRepository.save(user);
-}
-
-async function createTestCategory(
-  categoryRepository: Repository<Category>,
-): Promise<Category> {
-  const category = categoryRepository.create({
-    name: 'Poussettes',
-    description: 'Catégorie pour les poussettes',
-  });
-  return categoryRepository.save(category);
-}
-
-function generateTestToken(user: User): string {
-  const jwtService = new JwtService({
-    secret: process.env.JWT_SECRET || 'test-secret',
-    signOptions: { expiresIn: '1h' },
-  });
-  return jwtService.sign({
-    sub: user.id,
-    email: user.email,
-  });
-}

@@ -1,30 +1,50 @@
-import { Injectable, Logger } from '@nestjs/common';
 import { MailerService } from '@nestjs-modules/mailer';
+import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { User } from '../../users/entities/user.entity';
 
 @Injectable()
 export class EmailService {
   private readonly logger = new Logger(EmailService.name);
 
-  constructor(private readonly mailerService: MailerService) {}
+  constructor(
+    private readonly mailerService: MailerService,
+    private readonly configService: ConfigService,
+  ) {}
+
+  async sendVerificationEmail(user: User): Promise<void> {
+    try {
+      await this.mailerService.sendMail({
+        to: user.email,
+        subject: 'Vérification de votre compte',
+        template: 'verification',
+        context: {
+          name: user.firstName,
+          url: `${this.configService.get<string>(
+            'APP_URL',
+          )}/verify-email?token=${user.id}`,
+        },
+      });
+    } catch (error) {
+      this.logger.error("Erreur lors de l'envoi de l'email:", error);
+      throw error;
+    }
+  }
 
   async sendPasswordResetEmail(email: string, token: string): Promise<void> {
-    const resetLink = `${process.env.FRONTEND_URL}/reset-password?token=${token}`;
-
     try {
       await this.mailerService.sendMail({
         to: email,
         subject: 'Réinitialisation de votre mot de passe',
-        text: `Pour réinitialiser votre mot de passe, cliquez sur ce lien : ${resetLink}`,
-        html: `
-          <p>Pour réinitialiser votre mot de passe, cliquez sur le bouton ci-dessous :</p>
-          <a href="${resetLink}" style="padding: 10px 20px; background-color: #007bff; color: white; text-decoration: none; border-radius: 5px;">
-            Réinitialiser mon mot de passe
-          </a>
-        `,
+        template: 'reset-password',
+        context: {
+          url: `${this.configService.get<string>(
+            'APP_URL',
+          )}/reset-password?token=${token}`,
+        },
       });
-      this.logger.debug(`Email de réinitialisation envoyé à ${email}`);
     } catch (error) {
-      this.logger.error(`Erreur lors de l'envoi de l'email à ${email}:`, error);
+      this.logger.error("Erreur lors de l'envoi de l'email:", error);
       throw error;
     }
   }

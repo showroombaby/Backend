@@ -11,14 +11,14 @@ import {
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
+import { ProductView } from '../../products/entities/product-view.entity';
 import { Product } from '../../products/entities/product.entity';
+import { SavedFilter } from '../../products/entities/saved-filter.entity';
 import { Role } from '../enums/role.enum';
+import { Address } from '../interfaces/address.interface';
 
 @Entity('users')
 export class User {
-  private readonly logger = new Logger(User.name);
-  private static readonly SALT_ROUNDS = 10;
-
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
@@ -29,79 +29,69 @@ export class User {
   @Exclude()
   password: string;
 
-  @Column({ nullable: true })
+  @Column({ nullable: true, name: 'first_name' })
   firstName: string;
 
-  @Column({ nullable: true })
+  @Column({ nullable: true, name: 'last_name' })
   lastName: string;
 
   @Column({ nullable: true })
   avatar: string;
 
   @Column({
-    type: 'enum',
+    type: 'varchar',
     enum: Role,
     default: Role.USER,
   })
   role: Role;
 
-  @Column({ default: false })
+  @Column({ default: false, name: 'is_email_verified' })
   isEmailVerified: boolean;
 
-  @CreateDateColumn()
-  createdAt: Date;
-
-  @UpdateDateColumn()
-  updatedAt: Date;
-
-  @Column('simple-json', {
+  @Column({
+    type: 'text',
     nullable: true,
-    name: 'address',
+    transformer: {
+      to: (value: Address) => (value ? JSON.stringify(value) : null),
+      from: (value: string) => (value ? JSON.parse(value) : null),
+    },
   })
-  address?: {
-    street: string;
-    zipCode: string;
-    city: string;
-    additionalInfo?: string;
-  };
+  address: Address;
 
   @OneToMany(() => Product, (product) => product.seller)
   products: Product[];
+
+  @OneToMany(() => ProductView, (view) => view.user)
+  views: ProductView[];
+
+  @OneToMany(() => SavedFilter, (filter) => filter.user)
+  savedFilters: SavedFilter[];
+
+  @CreateDateColumn({ name: 'created_at' })
+  createdAt: Date;
+
+  @UpdateDateColumn({ name: 'updated_at' })
+  updatedAt: Date;
 
   @BeforeInsert()
   @BeforeUpdate()
   async hashPassword() {
     if (this.password) {
-      this.logger.debug('Début du hachage du mot de passe');
-      this.logger.debug(`Mot de passe avant hachage: ${this.password}`);
-
       try {
-        this.password = await bcrypt.hash(this.password, User.SALT_ROUNDS);
-        this.logger.debug(`Mot de passe après hachage: ${this.password}`);
+        this.password = await bcrypt.hash(this.password, 10);
       } catch (error) {
-        this.logger.error('Erreur lors du hachage du mot de passe:', error);
+        Logger.error('Error hashing password', error);
         throw error;
       }
     }
   }
 
-  async validatePassword(plainPassword: string): Promise<boolean> {
+  async validatePassword(password: string): Promise<boolean> {
     try {
-      this.logger.debug('Début de la validation du mot de passe');
-      this.logger.debug(`Mot de passe fourni: ${plainPassword}`);
-      this.logger.debug(`Mot de passe haché stocké: ${this.password}`);
-
-      if (!plainPassword || !this.password) {
-        this.logger.debug('Mot de passe manquant');
-        return false;
-      }
-
-      const isValid = await bcrypt.compare(plainPassword, this.password);
-      this.logger.debug(`Résultat de la validation: ${isValid}`);
-      return isValid;
+      return await bcrypt.compare(password, this.password);
     } catch (error) {
-      this.logger.error('Erreur lors de la validation du mot de passe:', error);
-      return false;
+      Logger.error('Error validating password', error);
+      throw error;
     }
   }
 }

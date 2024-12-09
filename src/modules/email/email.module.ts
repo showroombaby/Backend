@@ -1,27 +1,47 @@
+import { MailerModule, MailerService } from '@nestjs-modules/mailer';
 import { Module } from '@nestjs/common';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { EmailService } from './services/email.service';
-import { MailerModule } from '@nestjs-modules/mailer';
 
 @Module({
   imports: [
     MailerModule.forRootAsync({
-      useFactory: () => ({
+      imports: [ConfigModule],
+      useFactory: async (configService: ConfigService) => ({
         transport: {
-          host: process.env.SMTP_HOST,
-          port: parseInt(process.env.SMTP_PORT),
+          host: configService.get('SMTP_HOST'),
+          port: configService.get('SMTP_PORT'),
           secure: false,
           auth: {
-            user: process.env.SMTP_USER,
-            pass: process.env.SMTP_PASSWORD,
+            user: configService.get('SMTP_USER'),
+            pass: configService.get('SMTP_PASS'),
           },
         },
         defaults: {
-          from: process.env.SMTP_FROM,
+          from: configService.get('SMTP_FROM'),
         },
       }),
+      inject: [ConfigService],
     }),
   ],
-  providers: [EmailService],
+  providers: [
+    {
+      provide: EmailService,
+      useFactory: (
+        mailerService: MailerService,
+        configService: ConfigService,
+      ) => {
+        if (process.env.NODE_ENV === 'test') {
+          return {
+            sendVerificationEmail: jest.fn().mockResolvedValue(undefined),
+            sendPasswordResetEmail: jest.fn().mockResolvedValue(undefined),
+          };
+        }
+        return new EmailService(mailerService, configService);
+      },
+      inject: [MailerService, ConfigService],
+    },
+  ],
   exports: [EmailService],
 })
 export class EmailModule {}

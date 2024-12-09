@@ -9,13 +9,8 @@ import {
   Max,
   Min,
 } from 'class-validator';
-
-export enum ProductSortBy {
-  PRICE_ASC = 'price_asc',
-  PRICE_DESC = 'price_desc',
-  DATE_ASC = 'date_asc',
-  DATE_DESC = 'date_desc',
-}
+import { ProductCondition } from '../enums/product-condition.enum';
+import { ProductSortBy } from '../enums/product-sort-by.enum';
 
 export class SearchProductsDto {
   @ApiProperty({
@@ -24,7 +19,7 @@ export class SearchProductsDto {
   })
   @IsString()
   @IsOptional()
-  search?: string;
+  query?: string;
 
   @ApiProperty({
     description: 'ID de la catégorie',
@@ -56,14 +51,74 @@ export class SearchProductsDto {
   maxPrice?: number;
 
   @ApiProperty({
+    description: 'État du produit',
+    required: false,
+    enum: ProductCondition,
+  })
+  @IsEnum(ProductCondition)
+  @IsOptional()
+  condition?: ProductCondition;
+
+  @ApiProperty({
+    description: 'Latitude pour la recherche par localisation',
+    required: false,
+  })
+  @IsNumber()
+  @Min(-90)
+  @Max(90)
+  @IsOptional()
+  @Type(() => Number)
+  latitude?: number;
+
+  @ApiProperty({
+    description: 'Longitude pour la recherche par localisation',
+    required: false,
+  })
+  @IsNumber()
+  @Min(-180)
+  @Max(180)
+  @IsOptional()
+  @Type(() => Number)
+  longitude?: number;
+
+  @ApiProperty({
+    description: 'Rayon de recherche en kilomètres',
+    required: false,
+    minimum: 0,
+    maximum: 100,
+  })
+  @IsNumber()
+  @Min(0)
+  @Max(100)
+  @IsOptional()
+  @Type(() => Number)
+  radius?: number;
+
+  @ApiProperty({
+    description: 'Code postal',
+    required: false,
+  })
+  @IsString()
+  @IsOptional()
+  zipCode?: string;
+
+  @ApiProperty({
+    description: 'Ville',
+    required: false,
+  })
+  @IsString()
+  @IsOptional()
+  city?: string;
+
+  @ApiProperty({
     description: 'Trier par',
     required: false,
     enum: ProductSortBy,
-    default: ProductSortBy.DATE_DESC,
+    default: ProductSortBy.DATE,
   })
   @IsEnum(ProductSortBy)
   @IsOptional()
-  sortBy?: ProductSortBy = ProductSortBy.DATE_DESC;
+  sortBy?: ProductSortBy = ProductSortBy.DATE;
 
   @ApiProperty({
     description: 'Numéro de page',
@@ -81,12 +136,12 @@ export class SearchProductsDto {
     description: "Nombre d'éléments par page",
     required: false,
     minimum: 1,
-    maximum: 50,
+    maximum: 100,
     default: 10,
   })
   @IsNumber()
   @Min(1)
-  @Max(50)
+  @Max(100)
   @IsOptional()
   @Type(() => Number)
   limit?: number = 10;
