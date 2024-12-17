@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { testConfig } from '../../config/test.config';
@@ -13,9 +13,13 @@ import { EmailService } from '../../modules/email/services/email.service';
       envFilePath: 'src/config/test.env',
     }),
     TypeOrmModule.forRoot(testConfig),
-    JwtModule.register({
-      secret: 'test-secret',
-      signOptions: { expiresIn: '1h' },
+    JwtModule.registerAsync({
+      imports: [ConfigModule],
+      useFactory: async (configService: ConfigService) => ({
+        secret: configService.get('JWT_SECRET') || 'test-secret',
+        signOptions: { expiresIn: '1h' },
+      }),
+      inject: [ConfigService],
     }),
     EmailModule,
   ],

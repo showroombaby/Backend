@@ -27,7 +27,7 @@ describe('ProductsService', () => {
     price: 99.99,
     status: ProductStatus.DRAFT,
     condition: ProductCondition.NEW,
-    seller: { id: '1' } as User ,
+    seller: { id: '1' } as User,
     category: {
       id: '1',
       name: 'Test Category',
@@ -123,7 +123,8 @@ describe('ProductsService', () => {
     productImageRepository = module.get<Repository<ProductImage>>(
       getRepositoryToken(ProductImage),
     );
-    productImagesService = module.get<ProductImagesService>(ProductImagesService);
+    productImagesService =
+      module.get<ProductImagesService>(ProductImagesService);
     categoriesService = module.get<CategoriesService>(CategoriesService);
   });
 
@@ -156,7 +157,9 @@ describe('ProductsService', () => {
 
     it("devrait échouer si la catégorie n'existe pas", async () => {
       // Arrange
-      jest.spyOn(categoriesService, 'findOne').mockResolvedValue(null);
+      jest
+        .spyOn(categoriesService, 'findOne')
+        .mockRejectedValue(new NotFoundException('Category not found'));
 
       // Act & Assert
       await expect(
@@ -167,24 +170,28 @@ describe('ProductsService', () => {
 
     it("devrait utiliser le service d'images de produits", async () => {
       jest.spyOn(categoriesService, 'findOne').mockResolvedValue(mockCategory);
-      jest.spyOn(productImagesService, 'uploadImages').mockResolvedValue(['image1.jpg']);
+      jest
+        .spyOn(productImagesService, 'uploadImages')
+        .mockResolvedValue(['image1.jpg']);
       mockRepository.create.mockReturnValue(mockProduct);
       mockRepository.save.mockResolvedValue(mockProduct);
 
       const result = await service.create(createProductDto, mockImages, '1');
-      
-      expect(productImagesService.uploadImages).toHaveBeenCalledWith(mockImages);
+
+      expect(productImagesService.uploadImages).toHaveBeenCalledWith(
+        mockImages,
+      );
       expect(result).toEqual(mockProduct);
     });
 
     it("devrait utiliser le depot d'images de produits", async () => {
       jest.spyOn(categoriesService, 'findOne').mockResolvedValue(mockCategory);
-      jest.spyOn(productImagesService, 'uploadImages').mockResolvedValue(['image1.jpg']);
+      jest
+        .spyOn(productImagesService, 'uploadImages')
+        .mockResolvedValue(['image1.jpg']);
       mockRepository.create.mockReturnValue(mockProduct);
       mockRepository.save.mockResolvedValue(mockProduct);
-      
       const result = await service.create(createProductDto, mockImages, '1');
-      
       expect(productImageRepository.save).toHaveBeenCalled();
       expect(result).toEqual(mockProduct);
     });
@@ -202,7 +209,7 @@ describe('ProductsService', () => {
       expect(result).toEqual(mockProduct);
       expect(productRepository.findOne).toHaveBeenCalledWith({
         where: { id: '1' },
-        relations: ['images', 'seller', 'category'],
+        relations: ['category', 'images', 'seller'],
       });
     });
 
@@ -216,26 +223,53 @@ describe('ProductsService', () => {
   });
 
   it('should create product images', async () => {
-    const productId = 1;
+    const productId = '1';
     const files: Express.Multer.File[] = [
       {
         fieldname: 'image',
-        originalname: 'image1.jpg',
+        originalname: 'test.jpg',
         encoding: '7bit',
         mimetype: 'image/jpeg',
         destination: 'uploads/',
-        filename: 'image1.jpg',
-        path: 'uploads/image1.jpg',
+        filename: 'test.jpg',
+        path: 'uploads/test.jpg',
         size: 1024,
         buffer: Buffer.from('test image'),
         stream: {} as any,
       },
     ];
 
-    await productImagesService.uploadImages(files);
+    const mockProductImage: ProductImage = {
+      id: '1',
+      url: 'uploads/test.jpg',
+      productId,
+      product: null,
+      filename: 'test.jpg',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
 
-    expect(productImagesService.uploadImages).toHaveBeenCalledWith(
-      expect.arrayContaining([expect.any(String)]),
+    // Mock responses
+    jest
+      .spyOn(productImagesService, 'uploadImages')
+      .mockResolvedValue(['uploads/test.jpg']);
+    jest
+      .spyOn(productImagesService, 'createProductImage')
+      .mockResolvedValue(mockProductImage);
+
+    // Act
+    const uploadedPaths = await productImagesService.uploadImages(files);
+    const result = await productImagesService.createProductImage(
+      uploadedPaths[0],
+      productId,
     );
+
+    // Assert
+    expect(productImagesService.uploadImages).toHaveBeenCalledWith(files);
+    expect(productImagesService.createProductImage).toHaveBeenCalledWith(
+      'uploads/test.jpg',
+      productId,
+    );
+    expect(result).toEqual(mockProductImage);
   });
 });
