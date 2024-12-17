@@ -1,11 +1,9 @@
 import { INestApplication, ValidationPipe } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
-import { JwtModule } from '@nestjs/jwt';
 import { Test, TestingModule } from '@nestjs/testing';
-import { getRepositoryToken, TypeOrmModule } from '@nestjs/typeorm';
+import { getRepositoryToken } from '@nestjs/typeorm';
 import * as request from 'supertest';
 import { Repository } from 'typeorm';
-import { testConfig } from '../../../../config/test.config';
+import { TestModule } from '../../../../common/test/test.module';
 import { AuthModule } from '../../../auth/auth.module';
 import { EmailModule } from '../../../email/email.module';
 import { EmailService } from '../../../email/services/email.service';
@@ -26,20 +24,7 @@ describe('UsersController (Integration)', () => {
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
-      imports: [
-        ConfigModule.forRoot({
-          isGlobal: true,
-          envFilePath: 'src/config/test.env',
-        }),
-        TypeOrmModule.forRoot(testConfig),
-        JwtModule.register({
-          secret: 'test-secret',
-          signOptions: { expiresIn: '1h' },
-        }),
-        AuthModule,
-        EmailModule,
-        UsersModule,
-      ],
+      imports: [TestModule, AuthModule, EmailModule, UsersModule],
     })
       .overrideProvider(EmailService)
       .useValue({
