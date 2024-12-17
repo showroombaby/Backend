@@ -21,6 +21,7 @@ describe('ProductsController (Integration)', () => {
   let category: Category;
 
   const testUser = {
+    id: '1',
     email: 'test@example.com',
     password: 'Password123!',
     firstName: 'Test',
@@ -135,14 +136,14 @@ describe('ProductsController (Integration)', () => {
       await productRepository.save([
         {
           ...testProduct,
-          sellerId: testUser.id,
+          sellerId: '1',
           categoryId: category.id,
           status: ProductStatus.PUBLISHED,
         },
         {
           ...testProduct,
           title: 'Another Product',
-          sellerId: testUser.id,
+          sellerId: '1',
           categoryId: category.id,
           status: ProductStatus.PUBLISHED,
         },

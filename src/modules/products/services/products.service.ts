@@ -46,17 +46,19 @@ export class ProductsService {
       if (images && images.length > 0) {
         const uploadedImageUrls =
           await this.productImagesService.uploadImages(images);
-        const productImages = await Promise.all(
-          uploadedImageUrls.map(async (url) => {
-            const image = this.productImageRepository.create({
-              url,
-              filename: url.split('/').pop(),
-              product: savedProduct,
-            });
-            return await this.productImageRepository.save(image);
-          }),
-        );
-        savedProduct.images = productImages;
+        if (uploadedImageUrls) {
+          const productImages = await Promise.all(
+            uploadedImageUrls.map(async (url) => {
+              const image = this.productImageRepository.create({
+                url,
+                filename: url.split('/').pop(),
+                product: savedProduct,
+              });
+              return await this.productImageRepository.save(image);
+            }),
+          );
+          savedProduct.images = productImages;
+        }
       }
 
       return savedProduct;
@@ -212,17 +214,19 @@ export class ProductsService {
         }
         const uploadedImageUrls =
           await this.productImagesService.uploadImages(images);
-        const productImages = await Promise.all(
-          uploadedImageUrls.map(async (url) => {
-            const image = this.productImageRepository.create({
-              url,
-              filename: url.split('/').pop(),
-              product,
-            });
-            return await this.productImageRepository.save(image);
-          }),
-        );
-        product.images = productImages;
+        if (uploadedImageUrls) {
+          const productImages = await Promise.all(
+            uploadedImageUrls.map(async (url) => {
+              const image = this.productImageRepository.create({
+                url,
+                filename: url.split('/').pop(),
+                product,
+              });
+              return await this.productImageRepository.save(image);
+            }),
+          );
+          product.images = productImages;
+        }
       }
 
       return await this.productRepository.save(product);

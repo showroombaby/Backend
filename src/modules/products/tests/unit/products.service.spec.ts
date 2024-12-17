@@ -9,6 +9,9 @@ import { Product, ProductStatus } from '../../entities/product.entity';
 import { ProductCondition } from '../../enums/product-condition.enum';
 import { ProductImagesService } from '../../services/product-images.service';
 import { ProductsService } from '../../services/products.service';
+import { DataSource } from 'typeorm';
+import { Express } from 'express';
+import { User } from '../../../users/entities/user.entity';
 
 describe('ProductsService', () => {
   let service: ProductsService;
@@ -24,17 +27,23 @@ describe('ProductsService', () => {
     price: 99.99,
     status: ProductStatus.DRAFT,
     condition: ProductCondition.NEW,
-    sellerId: '1',
+    seller: { id: '1' } as User ,
+    category: {
+      id: '1',
+      name: 'Test Category',
+      description: 'Test Description',
+      products: [],
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    },
     categoryId: '1',
     images: [],
     views: [],
-    seller: null,
-    category: null,
     createdAt: new Date(),
     updatedAt: new Date(),
   };
 
-  const mockCategory: Partial<Category> = {
+  const mockCategory: Category = {
     id: '1',
     name: 'Test Category',
     description: 'Test Description',
@@ -43,7 +52,7 @@ describe('ProductsService', () => {
     updatedAt: new Date(),
   };
 
-  const mockImages = [
+  const mockImages: Express.Multer.File[] = [
     {
       fieldname: 'images',
       originalname: 'test.jpg',
@@ -51,8 +60,12 @@ describe('ProductsService', () => {
       mimetype: 'image/jpeg',
       buffer: Buffer.from('test'),
       size: 1024,
+      stream: null,
+      destination: '',
+      filename: 'test.jpg',
+      path: '',
     },
-  ] as Express.Multer.File[];
+  ];
 
   const mockRepository = {
     create: jest.fn(),
@@ -78,13 +91,26 @@ describe('ProductsService', () => {
         {
           provide: ProductImagesService,
           useValue: {
-            uploadImages: jest.fn().mockResolvedValue([]),
+            uploadImages: jest.fn(),
+            createProductImage: jest.fn(),
           },
         },
         {
           provide: CategoriesService,
           useValue: {
             findOne: jest.fn(),
+          },
+        },
+        {
+          provide: DataSource,
+          useValue: {
+            createQueryRunner: jest.fn().mockReturnValue({
+              manager: {
+                save: jest.fn(),
+                findOne: jest.fn(),
+              },
+              release: jest.fn(),
+            }),
           },
         },
       ],
@@ -97,8 +123,7 @@ describe('ProductsService', () => {
     productImageRepository = module.get<Repository<ProductImage>>(
       getRepositoryToken(ProductImage),
     );
-    productImagesService =
-      module.get<ProductImagesService>(ProductImagesService);
+    productImagesService = module.get<ProductImagesService>(ProductImagesService);
     categoriesService = module.get<CategoriesService>(CategoriesService);
   });
 
@@ -124,8 +149,8 @@ describe('ProductsService', () => {
       expect(result).toEqual(mockProduct);
       expect(productRepository.create).toHaveBeenCalledWith({
         ...createProductDto,
-        sellerId: '1',
-        status: ProductStatus.DRAFT,
+        seller: { id: '1' },
+        category: mockCategory,
       });
     });
 
@@ -138,6 +163,30 @@ describe('ProductsService', () => {
         service.create(createProductDto, mockImages, '1'),
       ).rejects.toThrow(NotFoundException);
       expect(categoriesService.findOne).toHaveBeenCalledWith('1');
+    });
+
+    it("devrait utiliser le service d'images de produits", async () => {
+      jest.spyOn(categoriesService, 'findOne').mockResolvedValue(mockCategory);
+      jest.spyOn(productImagesService, 'uploadImages').mockResolvedValue(['image1.jpg']);
+      mockRepository.create.mockReturnValue(mockProduct);
+      mockRepository.save.mockResolvedValue(mockProduct);
+
+      const result = await service.create(createProductDto, mockImages, '1');
+      
+      expect(productImagesService.uploadImages).toHaveBeenCalledWith(mockImages);
+      expect(result).toEqual(mockProduct);
+    });
+
+    it("devrait utiliser le depot d'images de produits", async () => {
+      jest.spyOn(categoriesService, 'findOne').mockResolvedValue(mockCategory);
+      jest.spyOn(productImagesService, 'uploadImages').mockResolvedValue(['image1.jpg']);
+      mockRepository.create.mockReturnValue(mockProduct);
+      mockRepository.save.mockResolvedValue(mockProduct);
+      
+      const result = await service.create(createProductDto, mockImages, '1');
+      
+      expect(productImageRepository.save).toHaveBeenCalled();
+      expect(result).toEqual(mockProduct);
     });
   });
 
@@ -164,5 +213,29 @@ describe('ProductsService', () => {
       // Act & Assert
       await expect(service.findOne('999')).rejects.toThrow(NotFoundException);
     });
+  });
+
+  it('should create product images', async () => {
+    const productId = 1;
+    const files: Express.Multer.File[] = [
+      {
+        fieldname: 'image',
+        originalname: 'image1.jpg',
+        encoding: '7bit',
+        mimetype: 'image/jpeg',
+        destination: 'uploads/',
+        filename: 'image1.jpg',
+        path: 'uploads/image1.jpg',
+        size: 1024,
+        buffer: Buffer.from('test image'),
+        stream: {} as any,
+      },
+    ];
+
+    await productImagesService.uploadImages(files);
+
+    expect(productImagesService.uploadImages).toHaveBeenCalledWith(
+      expect.arrayContaining([expect.any(String)]),
+    );
   });
 });
