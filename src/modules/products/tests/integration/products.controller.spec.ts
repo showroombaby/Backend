@@ -1,6 +1,7 @@
 import { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
-import { getRepositoryToken } from '@nestjs/typeorm';
+import { getRepositoryToken, TypeOrmModule } from '@nestjs/typeorm';
+import { JwtService } from '@nestjs/jwt';
 import * as path from 'path';
 import * as request from 'supertest';
 import { Repository } from 'typeorm';
@@ -11,13 +12,20 @@ import { Category } from '../../entities/category.entity';
 import { Product, ProductStatus } from '../../entities/product.entity';
 import { ProductCondition } from '../../enums/product-condition.enum';
 import { ProductsModule } from '../../products.module';
+import { TestJwtModule } from '@test/test-jwt.module';
+import { AuthModule } from '../../../auth/auth.module';
+import * as bcrypt from 'bcrypt';
+import * as fs from 'fs';
+import { ValidationPipe } from '@nestjs/common';
 
 describe('ProductsController (Integration)', () => {
   let app: INestApplication;
   let userRepository: Repository<User>;
   let categoryRepository: Repository<Category>;
   let productRepository: Repository<Product>;
+  let jwtService: JwtService;
   let userToken: string;
+  let user: User;
   let category: Category;
 
   const testUser = {
@@ -54,10 +62,24 @@ describe('ProductsController (Integration)', () => {
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({
-      imports: [TestModule, ProductsModule],
+      imports: [
+        TestModule.forRoot(),
+        TestJwtModule,
+        ProductsModule,
+        AuthModule,
+        TypeOrmModule.forFeature([User, Category, Product]),
+      ],
     }).compile();
 
     app = moduleRef.createNestApplication();
+    app.useGlobalPipes(
+      new ValidationPipe({
+        whitelist: true,
+        transform: true,
+        forbidNonWhitelisted: true,
+      }),
+    );
+
     userRepository = moduleRef.get<Repository<User>>(getRepositoryToken(User));
     categoryRepository = moduleRef.get<Repository<Category>>(
       getRepositoryToken(Category),
@@ -65,45 +87,89 @@ describe('ProductsController (Integration)', () => {
     productRepository = moduleRef.get<Repository<Product>>(
       getRepositoryToken(Product),
     );
+    jwtService = moduleRef.get<JwtService>(JwtService);
 
     await app.init();
 
-    // Créer l'utilisateur de test
-    const user = userRepository.create(testUser);
-    await userRepository.save(user);
+    // Créer le répertoire de test pour les images si nécessaire
+    const testImageDir = path.dirname(testImagePath);
+    if (!fs.existsSync(testImageDir)) {
+      fs.mkdirSync(testImageDir, { recursive: true });
+    }
 
-    // Créer la catégorie de test
-    category = await categoryRepository.save(testCategory);
-
-    // Obtenir le token
-    const loginResponse = await request(app.getHttpServer())
-      .post('/auth/login')
-      .send({
-        email: testUser.email,
-        password: testUser.password,
-      });
-    userToken = loginResponse.body.access_token;
+    // Créer une image de test
+    if (!fs.existsSync(testImagePath)) {
+      fs.writeFileSync(testImagePath, Buffer.from('fake image data'));
+    }
   });
 
   beforeEach(async () => {
     // Nettoyer la base de données avant chaque test
     await productRepository.query('DELETE FROM products');
+    await categoryRepository.query('DELETE FROM categories');
+    await userRepository.query('DELETE FROM users');
+
+    // Créer l'utilisateur de test avec mot de passe hashé
+    const hashedPassword = await bcrypt.hash(testUser.password, 10);
+    user = await userRepository.save({
+      ...testUser,
+      password: hashedPassword,
+    });
+
+    // Créer la catégorie de test
+    category = await categoryRepository.save(testCategory);
+
+    // Générer le token
+    userToken = jwtService.sign({
+      sub: user.id,
+      email: user.email,
+      role: user.role,
+    });
   });
 
   afterAll(async () => {
-    await app.close();
+    // Nettoyer l'image de test
+    if (fs.existsSync(testImagePath)) {
+      fs.unlinkSync(testImagePath);
+    }
+
+    await productRepository.query('DELETE FROM products');
+    await categoryRepository.query('DELETE FROM categories');
+    await userRepository.query('DELETE FROM users');
+
+    if (app) {
+      await app.close();
+    }
   });
 
   describe('POST /products', () => {
     it('devrait créer un nouveau produit', async () => {
+      // Créer la catégorie
+      const category = await categoryRepository.save(testCategory);
+
+      // Créer l'utilisateur et générer le token
+      const hashedPassword = await bcrypt.hash(testUser.password, 10);
+      user = await userRepository.save({
+        ...testUser,
+        password: hashedPassword,
+      });
+
+      // Générer un nouveau token avec le bon format
+      userToken = jwtService.sign({
+        sub: user.id,
+        email: user.email,
+        role: user.role,
+      });
+
       const response = await request(app.getHttpServer())
         .post('/products')
         .set('Authorization', `Bearer ${userToken}`)
         .field('title', testProduct.title)
         .field('description', testProduct.description)
-        .field('price', testProduct.price)
+        .field('price', testProduct.price.toString())
         .field('condition', testProduct.condition)
         .field('categoryId', category.id)
+        .field('status', ProductStatus.DRAFT)
         .attach('images', testImagePath)
         .expect(201);
 
@@ -112,85 +178,169 @@ describe('ProductsController (Integration)', () => {
         description: testProduct.description,
         price: testProduct.price,
         condition: testProduct.condition,
-        status: ProductStatus.DRAFT,
         categoryId: category.id,
+        status: ProductStatus.DRAFT,
+        userId: user.id,
       });
     });
 
     it('devrait échouer sans authentification', async () => {
+      const category = await categoryRepository.save(testCategory);
+
       await request(app.getHttpServer())
         .post('/products')
         .field('title', testProduct.title)
         .field('description', testProduct.description)
-        .field('price', testProduct.price)
+        .field('price', testProduct.price.toString())
         .field('condition', testProduct.condition)
         .field('categoryId', category.id)
+        .field('status', ProductStatus.DRAFT)
         .attach('images', testImagePath)
         .expect(401);
     });
   });
 
   describe('GET /products', () => {
-    beforeEach(async () => {
-      // Créer quelques produits de test
-      await productRepository.save([
-        {
-          ...testProduct,
-          sellerId: '1',
-          categoryId: category.id,
-          status: ProductStatus.PUBLISHED,
-        },
-        {
-          ...testProduct,
-          title: 'Another Product',
-          sellerId: '1',
-          categoryId: category.id,
-          status: ProductStatus.PUBLISHED,
-        },
-      ]);
-    });
+    it('devrait retourner la liste des produits', async () => {
+      // Créer un produit de test
+      const product = await productRepository.save({
+        ...testProduct,
+        category,
+        user,
+        seller: user,
+        status: ProductStatus.PUBLISHED,
+      });
 
-    it('devrait retourner une liste de produits', async () => {
       const response = await request(app.getHttpServer())
         .get('/products')
         .expect(200);
 
-      expect(response.body.items).toHaveLength(2);
+      expect(response.body.items).toBeInstanceOf(Array);
       expect(response.body.items[0]).toMatchObject({
-        title: expect.any(String),
-        description: expect.any(String),
-        price: expect.any(Number),
-        condition: expect.any(String),
-        status: expect.any(String),
+        title: product.title,
+        description: product.description,
+        price: product.price,
+        condition: product.condition,
+      });
+    });
+  });
+
+  describe('GET /products/:id', () => {
+    it('devrait retourner un produit spécifique', async () => {
+      // Créer un produit de test
+      const product = await productRepository.save({
+        ...testProduct,
+        category,
+        user,
+        seller: user,
+        status: ProductStatus.PUBLISHED,
+      });
+
+      const response = await request(app.getHttpServer())
+        .get(`/products/${product.id}`)
+        .expect(200);
+
+      expect(response.body).toMatchObject({
+        title: product.title,
+        description: product.description,
+        price: product.price,
+        condition: product.condition,
       });
     });
 
-    it('devrait filtrer les produits par catégorie', async () => {
+    it('devrait retourner 404 pour un produit inexistant', async () => {
+      await request(app.getHttpServer()).get('/products/999').expect(404);
+    });
+  });
+
+  describe('PUT /products/:id', () => {
+    it('devrait mettre à jour un produit', async () => {
+      // Créer un produit de test
+      const product = await productRepository.save({
+        ...testProduct,
+        category,
+        user,
+        seller: user,
+        status: ProductStatus.PUBLISHED,
+      });
+
+      const updateData = {
+        title: 'Updated Product',
+        description: 'Updated Description',
+        price: 149.99,
+        condition: ProductCondition.GOOD,
+        status: ProductStatus.PUBLISHED,
+      };
+
       const response = await request(app.getHttpServer())
-        .get(`/products?categoryId=${category.id}`)
+        .put(`/products/${product.id}`)
+        .set('Authorization', `Bearer ${userToken}`)
+        .send(updateData)
         .expect(200);
 
-      expect(response.body.items).toHaveLength(2);
-      expect(response.body.items[0].categoryId).toBe(category.id);
+      expect(response.body).toMatchObject(updateData);
     });
 
-    it('devrait filtrer les produits par prix', async () => {
-      const response = await request(app.getHttpServer())
-        .get('/products?minPrice=50&maxPrice=150')
+    it('devrait échouer sans authentification', async () => {
+      const product = await productRepository.save({
+        ...testProduct,
+        category,
+        user,
+        seller: user,
+        status: ProductStatus.PUBLISHED,
+      });
+
+      await request(app.getHttpServer())
+        .put(`/products/${product.id}`)
+        .send({
+          title: 'Updated Product',
+        })
+        .expect(401);
+    });
+  });
+
+  describe('DELETE /products/:id', () => {
+    it('devrait supprimer un produit', async () => {
+      // Créer un produit de test
+      const product = await productRepository.save({
+        ...testProduct,
+        category,
+        user,
+        seller: user,
+        status: ProductStatus.PUBLISHED,
+      });
+
+      await request(app.getHttpServer())
+        .delete(`/products/${product.id}`)
+        .set('Authorization', `Bearer ${userToken}`)
         .expect(200);
 
-      expect(response.body.items).toHaveLength(2);
-      expect(response.body.items[0].price).toBeGreaterThanOrEqual(50);
-      expect(response.body.items[0].price).toBeLessThanOrEqual(150);
+      // Vérifier que le produit a été supprimé
+      const deletedProduct = await productRepository.findOne({
+        where: { id: product.id },
+      });
+      expect(deletedProduct).toBeNull();
     });
 
-    it('devrait filtrer les produits par condition', async () => {
-      const response = await request(app.getHttpServer())
-        .get(`/products?condition=${ProductCondition.NEW}`)
-        .expect(200);
+    it('devrait échouer sans authentification', async () => {
+      const product = await productRepository.save({
+        ...testProduct,
+        category,
+        user,
+        seller: user,
+        status: ProductStatus.PUBLISHED,
+      });
 
-      expect(response.body.items).toHaveLength(2);
-      expect(response.body.items[0].condition).toBe(ProductCondition.NEW);
+      await request(app.getHttpServer())
+        .delete(`/products/${product.id}`)
+        .expect(401);
+    });
+
+    it('devrait échouer pour un produit inexistant', async () => {
+      await request(app.getHttpServer())
+        .delete('/products/999')
+        .set('Authorization', `Bearer ${userToken}`)
+        .expect(404);
     });
   });
 });

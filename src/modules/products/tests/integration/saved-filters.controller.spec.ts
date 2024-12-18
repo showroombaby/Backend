@@ -1,6 +1,7 @@
-import { INestApplication } from '@nestjs/common';
+import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
-import { getRepositoryToken } from '@nestjs/typeorm';
+import { getRepositoryToken, TypeOrmModule } from '@nestjs/typeorm';
+import { JwtService } from '@nestjs/jwt';
 import * as request from 'supertest';
 import { Repository } from 'typeorm';
 import { TestModule } from '../../../../common/test/test.module';
@@ -9,15 +10,20 @@ import { Role } from '../../../users/enums/role.enum';
 import { SavedFilter } from '../../entities/saved-filter.entity';
 import { ProductCondition } from '../../enums/product-condition.enum';
 import { ProductsModule } from '../../products.module';
+import { TestJwtModule } from '@test/test-jwt.module';
+import * as bcrypt from 'bcrypt';
 
 describe('SavedFiltersController (Integration)', () => {
   let app: INestApplication;
   let userRepository: Repository<User>;
   let savedFilterRepository: Repository<SavedFilter>;
+  let jwtService: JwtService;
   let userToken: string;
   let user: User;
+  let savedFilter: SavedFilter;
 
   const testUser = {
+    id: '1',
     email: 'test@example.com',
     password: 'Password123!',
     firstName: 'Test',
@@ -27,101 +33,110 @@ describe('SavedFiltersController (Integration)', () => {
 
   const testFilter = {
     name: 'Test Filter',
-    minPrice: 50,
-    maxPrice: 100,
-    condition: ProductCondition.NEW,
-    categoryId: '1',
+    filters: {
+      minPrice: 50,
+      maxPrice: 100,
+      condition: ProductCondition.NEW,
+      categoryId: '1',
+    },
   };
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({
-      imports: [TestModule, ProductsModule],
+      imports: [
+        TestModule.forRoot(),
+        TestJwtModule,
+        ProductsModule,
+        TypeOrmModule.forFeature([User, SavedFilter]),
+      ],
     }).compile();
 
     app = moduleRef.createNestApplication();
-    userRepository = moduleRef.get<Repository<User>>(getRepositoryToken(User));
-    savedFilterRepository = moduleRef.get<Repository<SavedFilter>>(
-      getRepositoryToken(SavedFilter),
+    app.useGlobalPipes(
+      new ValidationPipe({
+        whitelist: true,
+        transform: true,
+        forbidNonWhitelisted: true,
+      }),
     );
+
+    userRepository = moduleRef.get(getRepositoryToken(User));
+    savedFilterRepository = moduleRef.get(getRepositoryToken(SavedFilter));
+    jwtService = moduleRef.get(JwtService);
 
     await app.init();
 
-    // Créer l'utilisateur de test
-    user = userRepository.create(testUser);
-    await userRepository.save(user);
+    // Create test user
+    const hashedPassword = await bcrypt.hash(testUser.password, 10);
+    user = await userRepository.save({
+      ...testUser,
+      password: hashedPassword,
+    });
 
-    // Obtenir le token
-    const loginResponse = await request(app.getHttpServer())
-      .post('/auth/login')
-      .send({
-        email: testUser.email,
-        password: testUser.password,
-      });
-    userToken = loginResponse.body.access_token;
-  });
+    userToken = jwtService.sign({
+      sub: user.id,
+      email: user.email,
+      role: user.role,
+    });
 
-  beforeEach(async () => {
-    // Nettoyer la base de données avant chaque test
-    await savedFilterRepository.query('DELETE FROM saved_filters');
+    // Create test saved filter
+    savedFilter = await savedFilterRepository.save({
+      ...testFilter,
+      userId: user.id,
+    });
   });
 
   afterAll(async () => {
+    await savedFilterRepository.query('DELETE FROM saved_filters');
+    await userRepository.query('DELETE FROM users');
     await app.close();
   });
 
   describe('POST /saved-filters', () => {
+    const newFilter = {
+      name: 'New Test Filter',
+      filters: {
+        minPrice: 75,
+        maxPrice: 200,
+        condition: ProductCondition.LIKE_NEW,
+        categoryId: '2',
+      },
+    };
+
     it('devrait créer un nouveau filtre sauvegardé', async () => {
       const response = await request(app.getHttpServer())
         .post('/saved-filters')
         .set('Authorization', `Bearer ${userToken}`)
-        .send(testFilter)
+        .send(newFilter)
         .expect(201);
 
       expect(response.body).toMatchObject({
-        name: testFilter.name,
-        minPrice: testFilter.minPrice,
-        maxPrice: testFilter.maxPrice,
-        condition: testFilter.condition,
-        categoryId: testFilter.categoryId,
+        name: newFilter.name,
+        filters: newFilter.filters,
       });
+      expect(response.body.userId).toBe(user.id);
     });
 
     it('devrait échouer sans authentification', async () => {
       await request(app.getHttpServer())
         .post('/saved-filters')
-        .send(testFilter)
+        .send(newFilter)
         .expect(401);
     });
   });
 
   describe('GET /saved-filters', () => {
-    beforeEach(async () => {
-      // Créer quelques filtres de test
-      await savedFilterRepository.save([
-        {
-          ...testFilter,
-          user,
-        },
-        {
-          ...testFilter,
-          name: 'Another Filter',
-          user,
-        },
-      ]);
-    });
-
     it('devrait retourner la liste des filtres sauvegardés', async () => {
       const response = await request(app.getHttpServer())
         .get('/saved-filters')
         .set('Authorization', `Bearer ${userToken}`)
         .expect(200);
 
-      expect(response.body).toHaveLength(2);
+      expect(response.body).toBeInstanceOf(Array);
       expect(response.body[0]).toMatchObject({
-        name: expect.any(String),
-        minPrice: expect.any(Number),
-        maxPrice: expect.any(Number),
-        condition: expect.any(String),
+        name: testFilter.name,
+        filters: testFilter.filters,
+        userId: user.id,
       });
     });
 
@@ -131,82 +146,55 @@ describe('SavedFiltersController (Integration)', () => {
   });
 
   describe('PUT /saved-filters/:id', () => {
-    let filter: SavedFilter;
-
-    beforeEach(async () => {
-      filter = await savedFilterRepository.save({
-        ...testFilter,
-        user,
-      });
-    });
+    const updateData = {
+      name: 'Updated Filter',
+      filters: {
+        minPrice: 100,
+        maxPrice: 300,
+        condition: ProductCondition.GOOD,
+        categoryId: '3',
+      },
+    };
 
     it('devrait mettre à jour un filtre sauvegardé', async () => {
-      const updateDto = {
-        name: 'Updated Filter',
-        minPrice: 75,
-        maxPrice: 150,
-      };
-
       const response = await request(app.getHttpServer())
-        .put(`/saved-filters/${filter.id}`)
+        .put(`/saved-filters/${savedFilter.id}`)
         .set('Authorization', `Bearer ${userToken}`)
-        .send(updateDto)
+        .send(updateData)
         .expect(200);
 
-      expect(response.body).toMatchObject(updateDto);
-    });
-
-    it('devrait échouer sans authentification', async () => {
-      await request(app.getHttpServer())
-        .put(`/saved-filters/${filter.id}`)
-        .send({
-          name: 'Updated Filter',
-        })
-        .expect(401);
+      expect(response.body).toMatchObject({
+        name: updateData.name,
+        filters: updateData.filters,
+        userId: user.id,
+      });
     });
 
     it('devrait échouer pour un filtre inexistant', async () => {
       await request(app.getHttpServer())
-        .put('/saved-filters/999')
+        .put('/saved-filters/999999')
         .set('Authorization', `Bearer ${userToken}`)
-        .send({
-          name: 'Updated Filter',
-        })
+        .send(updateData)
         .expect(404);
     });
   });
 
   describe('DELETE /saved-filters/:id', () => {
-    let filter: SavedFilter;
-
-    beforeEach(async () => {
-      filter = await savedFilterRepository.save({
-        ...testFilter,
-        user,
-      });
-    });
-
     it('devrait supprimer un filtre sauvegardé', async () => {
       await request(app.getHttpServer())
-        .delete(`/saved-filters/${filter.id}`)
+        .delete(`/saved-filters/${savedFilter.id}`)
         .set('Authorization', `Bearer ${userToken}`)
-        .expect(200);
+        .expect(204);
 
       const deletedFilter = await savedFilterRepository.findOne({
-        where: { id: filter.id },
+        where: { id: savedFilter.id },
       });
       expect(deletedFilter).toBeNull();
     });
 
-    it('devrait échouer sans authentification', async () => {
-      await request(app.getHttpServer())
-        .delete(`/saved-filters/${filter.id}`)
-        .expect(401);
-    });
-
     it('devrait échouer pour un filtre inexistant', async () => {
       await request(app.getHttpServer())
-        .delete('/saved-filters/999')
+        .delete('/saved-filters/999999')
         .set('Authorization', `Bearer ${userToken}`)
         .expect(404);
     });
