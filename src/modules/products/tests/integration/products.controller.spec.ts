@@ -161,27 +161,53 @@ describe('ProductsController (Integration)', () => {
         role: user.role,
       });
 
-      const response = await request(app.getHttpServer())
-        .post('/products')
-        .set('Authorization', `Bearer ${userToken}`)
-        .field('title', testProduct.title)
-        .field('description', testProduct.description)
-        .field('price', testProduct.price.toString())
-        .field('condition', testProduct.condition)
-        .field('categoryId', category.id)
-        .field('status', ProductStatus.DRAFT)
-        .attach('images', testImagePath)
-        .expect(201);
-
-      expect(response.body).toMatchObject({
+      // Préparer les données du produit
+      const productData = {
         title: testProduct.title,
         description: testProduct.description,
-        price: testProduct.price,
+        price: testProduct.price.toString(),
         condition: testProduct.condition,
         categoryId: category.id,
         status: ProductStatus.DRAFT,
+      };
+
+      // Créer un fichier image temporaire pour le test si nécessaire
+      if (!fs.existsSync(testImagePath)) {
+        const testImageDir = path.dirname(testImagePath);
+        if (!fs.existsSync(testImageDir)) {
+          fs.mkdirSync(testImageDir, { recursive: true });
+        }
+        fs.writeFileSync(testImagePath, 'fake image content');
+      }
+
+      // Envoyer la requête
+      const response = await request(app.getHttpServer())
+        .post('/products')
+        .set('Authorization', `Bearer ${userToken}`)
+        .field('title', productData.title)
+        .field('description', productData.description)
+        .field('price', productData.price)
+        .field('condition', productData.condition)
+        .field('categoryId', productData.categoryId)
+        .field('status', productData.status)
+        .attach('images', testImagePath)
+        .expect(201);
+
+      // Vérifier la réponse
+      expect(response.body).toMatchObject({
+        title: productData.title,
+        description: productData.description,
+        price: Number(productData.price),
+        condition: productData.condition,
+        categoryId: productData.categoryId,
+        status: productData.status,
         userId: user.id,
       });
+
+      // Nettoyer le fichier image temporaire après le test
+      if (fs.existsSync(testImagePath)) {
+        fs.unlinkSync(testImagePath);
+      }
     });
 
     it('devrait échouer sans authentification', async () => {
