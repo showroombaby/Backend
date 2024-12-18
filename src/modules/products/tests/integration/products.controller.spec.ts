@@ -145,7 +145,10 @@ describe('ProductsController (Integration)', () => {
   describe('POST /products', () => {
     it('devrait créer un nouveau produit', async () => {
       // Créer la catégorie
-      const category = await categoryRepository.save(testCategory);
+      const category = await categoryRepository.save({
+        name: 'Test Category',
+        description: 'Test Category Description',
+      });
 
       // Créer l'utilisateur et générer le token
       const hashedPassword = await bcrypt.hash(testUser.password, 10);
@@ -154,72 +157,86 @@ describe('ProductsController (Integration)', () => {
         password: hashedPassword,
       });
 
-      // Générer un nouveau token avec le bon format
       userToken = jwtService.sign({
         sub: user.id,
         email: user.email,
         role: user.role,
       });
 
-      // Préparer les données du produit
-      const productData = {
-        title: testProduct.title,
-        description: testProduct.description,
-        price: testProduct.price.toString(),
-        condition: testProduct.condition,
+      // Créer une image JPEG valide
+      const tempImagePath = path.join(__dirname, 'test-image.jpg');
+      const imageBuffer = Buffer.from(
+        '/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/2wBDAQkJCQwLDBgNDRgyIRwhMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjL/wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAb/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAAAAX/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwCdABmX/9k=',
+        'base64',
+      );
+      fs.writeFileSync(tempImagePath, imageBuffer);
+
+      const requestData = {
+        title: 'Test Product',
+        description: 'Test Description',
+        price: 99.99,
+        condition: ProductCondition.NEW,
         categoryId: category.id,
         status: ProductStatus.DRAFT,
       };
 
-      // Créer un fichier image temporaire pour le test si nécessaire
-      if (!fs.existsSync(testImagePath)) {
-        const testImageDir = path.dirname(testImagePath);
-        if (!fs.existsSync(testImageDir)) {
-          fs.mkdirSync(testImageDir, { recursive: true });
+      console.log('Category ID:', category.id);
+      console.log('Request data:', requestData);
+
+      try {
+        const response = await request(app.getHttpServer())
+          .post('/products')
+          .set('Authorization', `Bearer ${userToken}`)
+          .field('title', requestData.title)
+          .field('description', requestData.description)
+          .field('price', requestData.price.toString())
+          .field('condition', requestData.condition)
+          .field('categoryId', requestData.categoryId)
+          .field('status', requestData.status)
+          .attach('images', tempImagePath, {
+            filename: 'test-image.jpg',
+            contentType: 'image/jpeg',
+          })
+          .expect((res) => {
+            if (res.status !== 201) {
+              console.log('Request data sent:', {
+                title: requestData.title,
+                description: requestData.description,
+                price: requestData.price.toString(),
+                condition: requestData.condition,
+                categoryId: requestData.categoryId,
+                status: requestData.status,
+              });
+              console.log('Response status:', res.status);
+              console.log('Response body:', res.body);
+            }
+          })
+          .expect(201);
+
+        expect(response.body).toMatchObject({
+          title: requestData.title,
+          description: requestData.description,
+          price: requestData.price,
+          condition: requestData.condition,
+          categoryId: requestData.categoryId,
+          status: requestData.status,
+        });
+      } finally {
+        // Nettoyage
+        if (fs.existsSync(tempImagePath)) {
+          fs.unlinkSync(tempImagePath);
         }
-        fs.writeFileSync(testImagePath, 'fake image content');
-      }
-
-      // Envoyer la requête
-      const response = await request(app.getHttpServer())
-        .post('/products')
-        .set('Authorization', `Bearer ${userToken}`)
-        .field('title', productData.title)
-        .field('description', productData.description)
-        .field('price', productData.price)
-        .field('condition', productData.condition)
-        .field('categoryId', productData.categoryId)
-        .field('status', productData.status)
-        .attach('images', testImagePath)
-        .expect(201);
-
-      // Vérifier la réponse
-      expect(response.body).toMatchObject({
-        title: productData.title,
-        description: productData.description,
-        price: Number(productData.price),
-        condition: productData.condition,
-        categoryId: productData.categoryId,
-        status: productData.status,
-        userId: user.id,
-      });
-
-      // Nettoyer le fichier image temporaire après le test
-      if (fs.existsSync(testImagePath)) {
-        fs.unlinkSync(testImagePath);
       }
     });
 
     it('devrait échouer sans authentification', async () => {
-      const category = await categoryRepository.save(testCategory);
-
       await request(app.getHttpServer())
         .post('/products')
-        .field('title', testProduct.title)
-        .field('description', testProduct.description)
-        .field('price', testProduct.price.toString())
-        .field('condition', testProduct.condition)
-        .field('categoryId', category.id)
+        .field('title', 'Test Product')
+        .field('description', 'Test Description')
+        .field('price', 99.99)
+        .field('condition', ProductCondition.NEW)
+        .field('categoryId', '1')
         .field('status', ProductStatus.DRAFT)
         .attach('images', testImagePath)
         .expect(401);

@@ -6,6 +6,7 @@ import {
   IsUUID,
   IsOptional,
 } from 'class-validator';
+import { Type } from 'class-transformer';
 import { ProductCondition } from '../enums/product-condition.enum';
 import { ProductStatus } from '../entities/product.entity';
 
@@ -20,6 +21,7 @@ export class CreateProductDto {
 
   @IsNotEmpty()
   @IsNumber()
+  @Type(() => Number)
   price: number;
 
   @IsNotEmpty()
