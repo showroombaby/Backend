@@ -36,13 +36,14 @@ describe('SavedFiltersService', () => {
   const savedFilterFixture: SavedFilter = {
     id: '1',
     name: 'Test Filter',
-    minPrice: 50,
-    maxPrice: 150,
-    condition: ProductCondition.LIKE_NEW,
-    categoryId: '1',
+    filters: {
+      minPrice: 50,
+      maxPrice: 150,
+      condition: ProductCondition.LIKE_NEW,
+      categoryId: '1',
+    },
     user: userFixture,
-    createdAt: new Date('2024-01-01'),
-    updatedAt: new Date('2024-01-01'),
+    userId: userFixture.id,
   };
 
   // Mock Repository
@@ -77,10 +78,12 @@ describe('SavedFiltersService', () => {
   describe('create', () => {
     const createDto: CreateSavedFilterDto = {
       name: 'Test Filter',
-      minPrice: 50,
-      maxPrice: 150,
-      condition: ProductCondition.LIKE_NEW,
-      categoryId: '1',
+      filters: {
+        minPrice: 50,
+        maxPrice: 150,
+        condition: ProductCondition.LIKE_NEW,
+        categoryId: '1',
+      },
     };
 
     it('devrait créer un nouveau filtre sauvegardé avec succès', async () => {
@@ -89,13 +92,17 @@ describe('SavedFiltersService', () => {
       mockRepository.save.mockResolvedValue(savedFilterFixture);
 
       // Act
-      const result = await service.create(createDto, userFixture);
+      const result = await service.create({
+        ...createDto,
+        userId: userFixture.id,
+      });
 
       // Assert
       expect(result).toEqual(savedFilterFixture);
       expect(repository.create).toHaveBeenCalledWith({
-        ...createDto,
-        user: userFixture,
+        name: createDto.name,
+        filters: createDto.filters,
+        userId: userFixture.id,
       });
       expect(repository.save).toHaveBeenCalledWith(savedFilterFixture);
     });
@@ -107,9 +114,13 @@ describe('SavedFiltersService', () => {
       mockRepository.create.mockReturnValue(savedFilterFixture);
 
       // Act & Assert
-      await expect(service.create(createDto, userFixture)).rejects.toThrow(
-        dbError,
-      );
+      await expect(
+        service.create({
+          name: createDto.name,
+          filters: createDto.filters,
+          userId: userFixture.id,
+        }),
+      ).rejects.toThrow(dbError);
     });
   });
 
@@ -119,12 +130,12 @@ describe('SavedFiltersService', () => {
       mockRepository.find.mockResolvedValue([savedFilterFixture]);
 
       // Act
-      const result = await service.findAll(userFixture);
+      const result = await service.findAll(userFixture.id);
 
       // Assert
       expect(result).toEqual([savedFilterFixture]);
       expect(repository.find).toHaveBeenCalledWith({
-        where: { user: { id: userFixture.id } },
+        where: { userId: userFixture.id },
       });
     });
 
@@ -133,7 +144,7 @@ describe('SavedFiltersService', () => {
       mockRepository.find.mockResolvedValue([]);
 
       // Act
-      const result = await service.findAll(userFixture);
+      const result = await service.findAll(userFixture.id);
 
       // Assert
       expect(result).toEqual([]);
@@ -145,7 +156,7 @@ describe('SavedFiltersService', () => {
       mockRepository.find.mockRejectedValue(dbError);
 
       // Act & Assert
-      await expect(service.findAll(userFixture)).rejects.toThrow(dbError);
+      await expect(service.findAll(userFixture.id)).rejects.toThrow(dbError);
     });
   });
 
@@ -155,12 +166,12 @@ describe('SavedFiltersService', () => {
       mockRepository.findOne.mockResolvedValue(savedFilterFixture);
 
       // Act
-      const result = await service.findOne('1', userFixture);
+      const result = await service.findOne('1', userFixture.id);
 
       // Assert
       expect(result).toEqual(savedFilterFixture);
       expect(repository.findOne).toHaveBeenCalledWith({
-        where: { id: '1', user: { id: userFixture.id } },
+        where: { id: '1', userId: userFixture.id },
       });
     });
 
@@ -169,7 +180,7 @@ describe('SavedFiltersService', () => {
       mockRepository.findOne.mockResolvedValue(null);
 
       // Act & Assert
-      await expect(service.findOne('999', userFixture)).rejects.toThrow(
+      await expect(service.findOne('999', userFixture.id)).rejects.toThrow(
         NotFoundException,
       );
     });
@@ -178,7 +189,12 @@ describe('SavedFiltersService', () => {
   describe('update', () => {
     const updateDto: UpdateSavedFilterDto = {
       name: 'Updated Filter',
-      minPrice: 100,
+      filters: {
+        minPrice: 100,
+        maxPrice: 200,
+        condition: ProductCondition.LIKE_NEW,
+        categoryId: '2',
+      },
     };
 
     it('devrait mettre à jour un filtre sauvegardé existant', async () => {
@@ -188,12 +204,12 @@ describe('SavedFiltersService', () => {
       mockRepository.save.mockResolvedValue(updatedFilter);
 
       // Act
-      const result = await service.update('1', updateDto, userFixture);
+      const result = await service.update('1', updateDto, userFixture.id);
 
       // Assert
       expect(result).toEqual(updatedFilter);
       expect(repository.findOne).toHaveBeenCalledWith({
-        where: { id: '1', user: { id: userFixture.id } },
+        where: { id: '1', userId: userFixture.id },
       });
       expect(repository.save).toHaveBeenCalledWith({
         ...savedFilterFixture,
@@ -207,7 +223,7 @@ describe('SavedFiltersService', () => {
 
       // Act & Assert
       await expect(
-        service.update('999', updateDto, userFixture),
+        service.update('999', updateDto, userFixture.id),
       ).rejects.toThrow(NotFoundException);
     });
 
@@ -218,9 +234,9 @@ describe('SavedFiltersService', () => {
       mockRepository.save.mockRejectedValue(dbError);
 
       // Act & Assert
-      await expect(service.update('1', updateDto, userFixture)).rejects.toThrow(
-        dbError,
-      );
+      await expect(
+        service.update('1', updateDto, userFixture.id),
+      ).rejects.toThrow(dbError);
     });
   });
 
@@ -231,11 +247,11 @@ describe('SavedFiltersService', () => {
       mockRepository.remove.mockResolvedValue(savedFilterFixture);
 
       // Act
-      await service.remove('1', userFixture);
+      await service.remove('1', userFixture.id);
 
       // Assert
       expect(repository.findOne).toHaveBeenCalledWith({
-        where: { id: '1', user: { id: userFixture.id } },
+        where: { id: '1', userId: userFixture.id },
       });
       expect(repository.remove).toHaveBeenCalledWith(savedFilterFixture);
     });
@@ -245,7 +261,7 @@ describe('SavedFiltersService', () => {
       mockRepository.findOne.mockResolvedValue(null);
 
       // Act & Assert
-      await expect(service.remove('999', userFixture)).rejects.toThrow(
+      await expect(service.remove('999', userFixture.id)).rejects.toThrow(
         NotFoundException,
       );
     });
@@ -257,7 +273,9 @@ describe('SavedFiltersService', () => {
       mockRepository.remove.mockRejectedValue(dbError);
 
       // Act & Assert
-      await expect(service.remove('1', userFixture)).rejects.toThrow(dbError);
+      await expect(service.remove('1', userFixture.id)).rejects.toThrow(
+        dbError,
+      );
     });
   });
 });

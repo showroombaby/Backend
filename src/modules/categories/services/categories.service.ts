@@ -76,7 +76,9 @@ export class CategoriesService {
   async remove(id: string): Promise<void> {
     try {
       const category = await this.findOne(id);
-      await this.categoryRepository.remove(category);
+      if (category) {
+        await this.categoryRepository.delete(id);
+      }
     } catch (error) {
       this.logger.error(
         'Erreur lors de la suppression de la catégorie:',

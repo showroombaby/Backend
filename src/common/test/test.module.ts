@@ -1,33 +1,78 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
-import { JwtModule } from '@nestjs/jwt';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { testConfig } from '../../config/test.config';
-import { EmailModule } from '../../modules/email/email.module';
-import { EmailService } from '../../modules/email/services/email.service';
+import { APP_PIPE } from '@nestjs/core';
+import { ValidationPipe } from '@nestjs/common';
+import { User } from '../../modules/users/entities/user.entity';
+import { Product } from '../../modules/products/entities/product.entity';
+import { Category } from '../../modules/categories/entities/category.entity';
+import { SavedFilter } from '../../modules/products/entities/saved-filter.entity';
+import { ProductImage } from '../../modules/products/entities/product-image.entity';
+import { ProductView } from '../../modules/products/entities/product-view.entity';
+import { UsersModule } from '../../modules/users/users.module';
+import { ProductsModule } from '../../modules/products/products.module';
+import { CategoriesModule } from '../../modules/categories/categories.module';
+import { AuthModule } from '../../modules/auth/auth.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      envFilePath: 'src/config/test.env',
+      load: [
+        () => ({
+          DATABASE_URL: ':memory:',
+          JWT_SECRET: 'test-secret',
+          JWT_EXPIRATION: '1h',
+        }),
+      ],
     }),
-    TypeOrmModule.forRoot(testConfig),
-    JwtModule.register({
-      secret: 'test-secret',
-      signOptions: { expiresIn: '1h' },
+    TypeOrmModule.forRoot({
+      type: 'sqlite',
+      database: ':memory:',
+      entities: [
+        User,
+        Product,
+        Category,
+        SavedFilter,
+        ProductImage,
+        ProductView,
+      ],
+      synchronize: true,
+      dropSchema: true,
+      logging: false,
+      autoLoadEntities: true,
+      migrationsRun: true,
     }),
-    EmailModule,
+    TypeOrmModule.forFeature([
+      User,
+      Product,
+      Category,
+      SavedFilter,
+      ProductImage,
+      ProductView,
+    ]),
+    UsersModule,
+    ProductsModule,
+    CategoriesModule,
+    AuthModule,
   ],
   providers: [
     {
-      provide: EmailService,
-      useValue: {
-        sendVerificationEmail: jest.fn().mockResolvedValue(undefined),
-        sendPasswordResetEmail: jest.fn().mockResolvedValue(undefined),
-      },
+      provide: APP_PIPE,
+      useValue: new ValidationPipe({
+        whitelist: true,
+        transform: true,
+        forbidNonWhitelisted: true,
+      }),
     },
   ],
-  exports: [JwtModule, EmailModule],
+  exports: [TypeOrmModule],
 })
-export class TestModule {}
+export class TestModule {
+  static forRoot() {
+    return {
+      module: TestModule,
+      imports: [],
+    };
+  }
+}

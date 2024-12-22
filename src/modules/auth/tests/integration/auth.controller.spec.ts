@@ -4,6 +4,7 @@ import * as request from 'supertest';
 import { TestModule } from '../../../../common/test/test.module';
 import { UsersModule } from '../../../users/users.module';
 import { AuthModule } from '../../auth.module';
+import { TestJwtModule } from '@test/test-jwt.module';
 
 describe('AuthController (Integration)', () => {
   let app: INestApplication;
@@ -17,7 +18,7 @@ describe('AuthController (Integration)', () => {
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({
-      imports: [TestModule, AuthModule, UsersModule],
+      imports: [TestModule.forRoot(), TestJwtModule, AuthModule, UsersModule],
     }).compile();
 
     app = moduleRef.createNestApplication();

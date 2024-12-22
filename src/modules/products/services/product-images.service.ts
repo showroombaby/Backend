@@ -28,12 +28,16 @@ export class ProductImagesService {
         .jpeg({ quality: 80 })
         .toBuffer();
 
-      // Générer un nom de fichier unique
-      const filename = `${Date.now()}-${file.originalname}`;
+      // Générer un nom de fichier unique avec timestamp pour éviter les collisions
+      const filename = `${Date.now()}-${file.originalname.replace(/\s+/g, '-')}`;
 
-      // Sauvegarder l'image optimisée
+      // Sauvegarder l'image optimisée avec le nom de fichier généré
       return this.storageService.uploadFile(
-        { ...file, buffer: optimizedBuffer },
+        {
+          ...file,
+          buffer: optimizedBuffer,
+          filename, // Utiliser le nom de fichier généré
+        },
         'products',
       );
     } catch (error) {
@@ -67,5 +71,28 @@ export class ProductImagesService {
       }),
     );
     await Promise.all(deletePromises);
+  }
+
+  async createProductImage(
+    url: string,
+    productId: string,
+  ): Promise<ProductImage> {
+    try {
+      // Extraire le nom du fichier de l'URL de manière plus robuste
+      const filename = url.split('/').pop()?.split('?')[0] || '';
+      const productImage = this.productImageRepository.create({
+        url,
+        filename, // Stocker le nom du fichier pour référence future
+        productId,
+      });
+      return await this.productImageRepository.save(productImage);
+    } catch (error) {
+      this.logger.error(
+        `Erreur lors de la création de l'image produit: ${error.message}`,
+      );
+      throw new BadRequestException(
+        "Erreur lors de la création de l'image produit",
+      );
+    }
   }
 }

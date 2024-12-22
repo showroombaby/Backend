@@ -3,6 +3,7 @@ import {
   Controller,
   Delete,
   Get,
+  HttpCode,
   Param,
   Post,
   Put,
@@ -12,14 +13,10 @@ import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { User } from '../../users/entities/user.entity';
-import { SearchProductsDto } from '../dto/search-products.dto';
 import { SavedFilter } from '../entities/saved-filter.entity';
 import { SavedFiltersService } from '../services/saved-filters.service';
-
-class CreateSavedFilterDto {
-  name: string;
-  filter: SearchProductsDto;
-}
+import { CreateSavedFilterDto } from '../dto/create-saved-filter.dto';
+import { UpdateSavedFilterDto } from '../dto/update-saved-filter.dto';
 
 @ApiTags('saved-filters')
 @Controller('saved-filters')
@@ -28,6 +25,7 @@ export class SavedFiltersController {
   constructor(private readonly savedFiltersService: SavedFiltersService) {}
 
   @Post()
+  @HttpCode(201)
   @ApiOperation({ summary: 'Sauvegarder un filtre de recherche' })
   @ApiResponse({
     status: 201,
@@ -38,11 +36,10 @@ export class SavedFiltersController {
     @Body() createDto: CreateSavedFilterDto,
     @CurrentUser() user: User,
   ) {
-    const filterData = {
-      name: createDto.name,
-      ...createDto.filter,
-    };
-    return this.savedFiltersService.create(filterData, user);
+    return this.savedFiltersService.create({
+      ...createDto,
+      userId: user.id,
+    });
   }
 
   @Get()
@@ -52,50 +49,41 @@ export class SavedFiltersController {
     description: 'Liste des filtres sauvegardés',
     type: [SavedFilter],
   })
-  async findAll(@CurrentUser() user: User) {
-    return this.savedFiltersService.findAll(user);
+  findAll(@CurrentUser() user: User) {
+    return this.savedFiltersService.findAll(user.id);
   }
 
   @Get(':id')
   @ApiOperation({ summary: 'Récupérer un filtre sauvegardé par son ID' })
   @ApiResponse({
     status: 200,
-    description: 'Filtre trouvé',
+    description: 'Filtre sauvegardé trouvé',
     type: SavedFilter,
   })
-  async findOne(@Param('id') id: string, @CurrentUser() user: User) {
-    return this.savedFiltersService.findOne(id, user);
+  findOne(@Param('id') id: string, @CurrentUser() user: User) {
+    return this.savedFiltersService.findOne(id, user.id);
   }
 
   @Put(':id')
   @ApiOperation({ summary: 'Mettre à jour un filtre sauvegardé' })
   @ApiResponse({
     status: 200,
-    description: 'Filtre mis à jour avec succès',
+    description: 'Filtre sauvegardé mis à jour',
     type: SavedFilter,
   })
-  async update(
+  update(
     @Param('id') id: string,
-    @Body() updateDto: CreateSavedFilterDto,
+    @Body() updateDto: UpdateSavedFilterDto,
     @CurrentUser() user: User,
   ) {
-    return this.savedFiltersService.update(
-      id,
-      {
-        name: updateDto.name,
-        ...updateDto.filter,
-      },
-      user,
-    );
+    return this.savedFiltersService.update(id, updateDto, user.id);
   }
 
   @Delete(':id')
+  @HttpCode(204)
   @ApiOperation({ summary: 'Supprimer un filtre sauvegardé' })
-  @ApiResponse({
-    status: 200,
-    description: 'Filtre supprim�� avec succès',
-  })
+  @ApiResponse({ status: 204, description: 'Filtre supprimé avec succès' })
   async remove(@Param('id') id: string, @CurrentUser() user: User) {
-    return this.savedFiltersService.remove(id, user);
+    await this.savedFiltersService.remove(id, user.id);
   }
 }

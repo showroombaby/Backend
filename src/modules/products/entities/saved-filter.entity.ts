@@ -1,15 +1,25 @@
 import {
-  Column,
-  CreateDateColumn,
   Entity,
-  ManyToOne,
   PrimaryGeneratedColumn,
-  UpdateDateColumn,
+  Column,
+  ManyToOne,
+  JoinColumn,
 } from 'typeorm';
 import { User } from '../../users/entities/user.entity';
-import { ProductCondition } from '../enums/product-condition.enum';
 
-@Entity()
+interface FilterOptions {
+  categoryId?: string;
+  minPrice?: number;
+  maxPrice?: number;
+  condition?: string;
+  latitude?: number;
+  longitude?: number;
+  radius?: number;
+  query?: string;
+  sortBy?: string;
+}
+
+@Entity('saved_filters')
 export class SavedFilter {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -17,29 +27,13 @@ export class SavedFilter {
   @Column()
   name: string;
 
-  @Column({ type: 'float', nullable: true })
-  minPrice?: number;
+  @Column('json', { default: '{}' })
+  filters: FilterOptions;
 
-  @Column({ type: 'float', nullable: true })
-  maxPrice?: number;
-
-  @Column({
-    type: 'varchar',
-    enum: ProductCondition,
-    nullable: true,
-    name: 'condition',
-  })
-  condition?: ProductCondition;
-
-  @Column({ nullable: true })
-  categoryId?: string;
-
-  @ManyToOne(() => User, (user) => user.savedFilters)
+  @ManyToOne(() => User, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'user_id' })
   user: User;
 
-  @CreateDateColumn()
-  createdAt: Date;
-
-  @UpdateDateColumn()
-  updatedAt: Date;
+  @Column({ name: 'user_id' })
+  userId: string;
 }

@@ -19,6 +19,7 @@ import { CreateProductDto } from '../dto/create-product.dto';
 import { SearchProductsDto } from '../dto/search-products.dto';
 import { UpdateProductDto } from '../dto/update-product.dto';
 import { ProductsService } from '../services/products.service';
+import { Product } from '../entities/product.entity';
 
 @Controller('products')
 export class ProductsController {
@@ -31,8 +32,17 @@ export class ProductsController {
     @Body() createProductDto: CreateProductDto,
     @UploadedFiles() files: Express.Multer.File[],
     @Req() req: { user: User },
-  ) {
-    return this.productsService.create(createProductDto, files, req.user.id);
+  ): Promise<Product> {
+    const productData: Omit<CreateProductDto, 'images'> = {
+      title: createProductDto.title,
+      description: createProductDto.description,
+      price: createProductDto.price,
+      condition: createProductDto.condition,
+      categoryId: createProductDto.categoryId,
+      status: createProductDto.status,
+      userId: createProductDto.userId,
+    };
+    return this.productsService.create(productData, files || [], req.user.id);
   }
 
   @Get()
@@ -53,11 +63,20 @@ export class ProductsController {
     @Body() updateProductDto: UpdateProductDto,
     @UploadedFiles() files: Express.Multer.File[],
     @Req() req: { user: User },
-  ) {
+  ): Promise<Product> {
+    const productData: Omit<UpdateProductDto, 'images'> = {
+      title: updateProductDto.title,
+      description: updateProductDto.description,
+      price: updateProductDto.price,
+      condition: updateProductDto.condition,
+      categoryId: updateProductDto.categoryId,
+      status: updateProductDto.status,
+      userId: updateProductDto.userId,
+    };
     return this.productsService.update(
       id,
-      updateProductDto,
-      files,
+      productData,
+      files || [],
       req.user.id,
     );
   }

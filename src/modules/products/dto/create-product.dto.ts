@@ -1,24 +1,45 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { IsNumber, IsString, IsUUID, Length, Max, Min } from 'class-validator';
+import {
+  IsNotEmpty,
+  IsString,
+  IsNumber,
+  IsEnum,
+  IsUUID,
+  IsOptional,
+} from 'class-validator';
+import { Type } from 'class-transformer';
+import { ProductCondition } from '../enums/product-condition.enum';
+import { ProductStatus } from '../entities/product.entity';
 
 export class CreateProductDto {
-  @ApiProperty({ example: 'Poussette Yoyo' })
+  @IsNotEmpty()
   @IsString()
-  @Length(3, 100)
   title: string;
 
-  @ApiProperty({ example: 'Poussette en excellent état...' })
+  @IsNotEmpty()
   @IsString()
-  @Length(10, 2000)
   description: string;
 
-  @ApiProperty({ example: 299.99 })
+  @IsNotEmpty()
   @IsNumber()
-  @Min(0)
-  @Max(99999)
+  @Type(() => Number)
   price: number;
 
-  @ApiProperty({ example: '123e4567-e89b-12d3-a456-426614174000' })
+  @IsNotEmpty()
+  @IsEnum(ProductCondition)
+  condition: ProductCondition;
+
+  @IsNotEmpty()
   @IsUUID()
   categoryId: string;
+
+  @IsOptional()
+  @IsEnum(ProductStatus)
+  status?: ProductStatus = ProductStatus.DRAFT;
+
+  @IsOptional()
+  @IsUUID()
+  userId?: string;
+
+  @IsOptional()
+  images?: Express.Multer.File[];
 }

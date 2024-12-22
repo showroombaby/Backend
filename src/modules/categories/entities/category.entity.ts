@@ -1,11 +1,5 @@
-import {
-  Column,
-  CreateDateColumn,
-  Entity,
-  OneToMany,
-  PrimaryGeneratedColumn,
-  UpdateDateColumn,
-} from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, OneToMany } from 'typeorm';
+import { IsNotEmpty, IsString, MinLength } from 'class-validator';
 import { Product } from '../../products/entities/product.entity';
 
 @Entity('categories')
@@ -14,17 +8,15 @@ export class Category {
   id: string;
 
   @Column()
+  @IsNotEmpty()
+  @IsString()
+  @MinLength(1)
   name: string;
 
-  @Column({ nullable: true })
+  @Column()
+  @IsString()
   description: string;
 
   @OneToMany(() => Product, (product) => product.category)
   products: Product[];
-
-  @CreateDateColumn({ name: 'created_at' })
-  createdAt: Date;
-
-  @UpdateDateColumn({ name: 'updated_at' })
-  updatedAt: Date;
 }

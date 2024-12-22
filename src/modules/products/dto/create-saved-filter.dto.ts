@@ -5,14 +5,13 @@ import {
   IsOptional,
   IsString,
   Min,
+  ValidateNested,
+  IsObject,
 } from 'class-validator';
+import { Type } from 'class-transformer';
 import { ProductCondition } from '../enums/product-condition.enum';
 
-export class CreateSavedFilterDto {
-  @IsString()
-  @IsNotEmpty()
-  name: string;
-
+class FilterOptionsDto {
   @IsNumber()
   @IsOptional()
   @Min(0)
@@ -30,4 +29,15 @@ export class CreateSavedFilterDto {
   @IsString()
   @IsOptional()
   categoryId?: string;
+}
+
+export class CreateSavedFilterDto {
+  @IsString()
+  @IsNotEmpty()
+  name: string;
+
+  @IsObject()
+  @ValidateNested()
+  @Type(() => FilterOptionsDto)
+  filters: FilterOptionsDto;
 }
