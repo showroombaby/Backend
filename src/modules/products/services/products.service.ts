@@ -9,8 +9,10 @@ import { Repository } from 'typeorm';
 import { CategoriesService } from '../../categories/services/categories.service';
 import { SearchProductsDto } from '../dto/search-products.dto';
 import { ProductImage } from '../entities/product-image.entity';
-import { Product } from '../entities/product.entity';
+import { Product, ProductStatus } from '../entities/product.entity';
 import { ProductImagesService } from './product-images.service';
+import { ProductDetailDto, SellerInfoDto } from '../dto/product-detail.dto';
+import { ProductFavoritesService } from './product-favorites.service';
 
 @Injectable()
 export class ProductsService {
@@ -23,6 +25,7 @@ export class ProductsService {
     private readonly productImageRepository: Repository<ProductImage>,
     private readonly productImagesService: ProductImagesService,
     private readonly categoriesService: CategoriesService,
+    private readonly productFavoritesService: ProductFavoritesService,
   ) {}
 
   async create(
@@ -254,5 +257,82 @@ export class ProductsService {
       this.logger.error('Erreur lors de la suppression du produit:', error);
       throw error;
     }
+  }
+
+  async getProductDetails(id: string, userId?: string): Promise<any> {
+    try {
+      const product = await this.productRepository.findOne({
+        where: { id },
+        relations: ['seller', 'category', 'images'],
+      });
+
+      if (!product) {
+        throw new NotFoundException('Product not found');
+      }
+
+      // Incrémenter le compteur de vues
+      product.viewCount = (product.viewCount || 0) + 1;
+      await this.productRepository.save(product);
+
+      const isFavorite = userId
+        ? await this.productFavoritesService.isFavorite(userId, id)
+        : false;
+
+      return {
+        ...this.transformProductResponse(product),
+        isFavorite,
+      };
+    } catch (error) {
+      this.logger.error('Erreur lors de la récupération des détails du produit:', error);
+      throw error;
+    }
+  }
+
+  async findSimilarProducts(id: string, limit: number = 4): Promise<Product[]> {
+    try {
+      const product = await this.findOne(id);
+
+      return this.productRepository
+        .createQueryBuilder('product')
+        .leftJoinAndSelect('product.category', 'category')
+        .leftJoinAndSelect('product.images', 'images')
+        .leftJoinAndSelect('product.seller', 'seller')
+        .where('product.categoryId = :categoryId', { categoryId: product.categoryId })
+        .andWhere('product.id != :id', { id })
+        .andWhere('product.status = :status', { status: ProductStatus.PUBLISHED })
+        .orderBy('product.viewCount', 'DESC')
+        .take(limit)
+        .getMany();
+    } catch (error) {
+      this.logger.error('Erreur lors de la recherche des produits similaires:', error);
+      throw error;
+    }
+  }
+
+  private transformProductResponse(product: Product) {
+    return {
+      id: product.id,
+      title: product.title,
+      description: product.description,
+      price: product.price,
+      condition: product.condition,
+      status: product.status,
+      images: product.images.map(img => img.url),
+      seller: {
+        id: product.seller.id,
+        username: product.seller.username,
+        avatarUrl: product.seller.avatarUrl,
+        name: product.seller.name,
+        email: product.seller.email,
+        rating: product.seller.rating,
+      },
+      category: {
+        id: product.category.id,
+        name: product.category.name,
+      },
+      viewCount: product.viewCount,
+      createdAt: product.createdAt,
+      updatedAt: product.updatedAt,
+    };
   }
 }

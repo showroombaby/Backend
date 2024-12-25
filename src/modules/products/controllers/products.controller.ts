@@ -20,6 +20,7 @@ import { SearchProductsDto } from '../dto/search-products.dto';
 import { UpdateProductDto } from '../dto/update-product.dto';
 import { ProductsService } from '../services/products.service';
 import { Product } from '../entities/product.entity';
+import { ProductDetailDto } from '../dto/product-detail.dto';
 
 @Controller('products')
 export class ProductsController {
@@ -51,8 +52,14 @@ export class ProductsController {
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.productsService.findOne(id);
+  async findOne(@Param('id') id: string, @Req() req: { user?: User }): Promise<ProductDetailDto> {
+    const userId = req.user?.id;
+    return this.productsService.getProductDetails(id, userId);
+  }
+
+  @Get(':id/similar')
+  async findSimilar(@Param('id') id: string) {
+    return this.productsService.findSimilarProducts(id);
   }
 
   @Put(':id')

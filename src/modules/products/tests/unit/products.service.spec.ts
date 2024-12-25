@@ -9,6 +9,7 @@ import { Product, ProductStatus } from '../../entities/product.entity';
 import { ProductCondition } from '../../enums/product-condition.enum';
 import { ProductImagesService } from '../../services/product-images.service';
 import { ProductsService } from '../../services/products.service';
+import { ProductFavoritesService } from '../../services/product-favorites.service';
 import { DataSource } from 'typeorm';
 import { Express } from 'express';
 import { User } from '../../../users/entities/user.entity';
@@ -99,6 +100,15 @@ describe('ProductsService', () => {
           provide: CategoriesService,
           useValue: {
             findOne: jest.fn(),
+          },
+        },
+        {
+          provide: ProductFavoritesService,
+          useValue: {
+            isFavorite: jest.fn().mockResolvedValue(false),
+            addToFavorites: jest.fn(),
+            removeFromFavorites: jest.fn(),
+            getUserFavorites: jest.fn(),
           },
         },
         {
