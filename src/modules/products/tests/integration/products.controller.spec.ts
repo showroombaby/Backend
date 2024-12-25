@@ -150,6 +150,10 @@ describe('ProductsController (Integration)', () => {
         description: 'Test Category Description',
       });
 
+      // Vérifier que la catégorie a été créée
+      expect(category).toBeDefined();
+      expect(category.id).toBeDefined();
+
       // Créer l'utilisateur et générer le token
       const hashedPassword = await bcrypt.hash(testUser.password, 10);
       user = await userRepository.save({
@@ -230,16 +234,34 @@ describe('ProductsController (Integration)', () => {
     });
 
     it('devrait échouer sans authentification', async () => {
-      await request(app.getHttpServer())
-        .post('/products')
-        .field('title', 'Test Product')
-        .field('description', 'Test Description')
-        .field('price', 99.99)
-        .field('condition', ProductCondition.NEW)
-        .field('categoryId', '1')
-        .field('status', ProductStatus.DRAFT)
-        .attach('images', testImagePath)
-        .expect(401);
+      // Créer une image JPEG valide
+      const tempImagePath = path.join(__dirname, 'test-image.jpg');
+      const imageBuffer = Buffer.from(
+        '/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/2wBDAQkJCQwLDBgNDRgyIRwhMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjL/wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAb/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAAAAX/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwCdABmX/9k=',
+        'base64',
+      );
+      fs.writeFileSync(tempImagePath, imageBuffer);
+
+      try {
+        await request(app.getHttpServer())
+          .post('/products')
+          .field('title', 'Test Product')
+          .field('description', 'Test Description')
+          .field('price', '99.99')
+          .field('condition', ProductCondition.NEW)
+          .field('categoryId', category.id)
+          .field('status', ProductStatus.DRAFT)
+          .attach('images', tempImagePath, {
+            filename: 'test-image.jpg',
+            contentType: 'image/jpeg',
+          })
+          .expect(401);
+      } finally {
+        // Nettoyage
+        if (fs.existsSync(tempImagePath)) {
+          fs.unlinkSync(tempImagePath);
+        }
+      }
     });
   });
 

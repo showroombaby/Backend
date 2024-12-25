@@ -8,6 +8,7 @@ import { UpdateSavedFilterDto } from '../../dto/update-saved-filter.dto';
 import { SavedFilter } from '../../entities/saved-filter.entity';
 import { ProductCondition } from '../../enums/product-condition.enum';
 import { SavedFiltersService } from '../../services/saved-filters.service';
+import { User } from '@/modules/users/entities/user.entity';
 
 describe('SavedFiltersService', () => {
   let service: SavedFiltersService;
@@ -19,9 +20,13 @@ describe('SavedFiltersService', () => {
     email: 'admin@example.com',
     firstName: 'Admin',
     lastName: 'User',
+    name: 'Admin User',
+    username: 'admin',
+    avatar: null,
+    avatarUrl: 'https://example.com/avatar.jpg',
+    rating: 0,
     role: Role.ADMIN,
     password: 'hashedPassword123!',
-    avatar: null,
     isEmailVerified: false,
     address: null,
     products: [],
@@ -42,7 +47,7 @@ describe('SavedFiltersService', () => {
       condition: ProductCondition.LIKE_NEW,
       categoryId: '1',
     },
-    user: userFixture,
+    user: userFixture as unknown as User,
     userId: userFixture.id,
   };
 
