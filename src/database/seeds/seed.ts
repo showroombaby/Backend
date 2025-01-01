@@ -1,5 +1,5 @@
 import dataSource from '@/config/database.seed.config';
-import { Category } from '@/modules/products/entities/category.entity';
+import { Category } from '@/modules/categories/entities/category.entity';
 import { categories } from './category.seed';
 
 async function bootstrap() {

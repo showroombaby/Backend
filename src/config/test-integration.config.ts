@@ -1,5 +1,5 @@
 import { DataSourceOptions } from 'typeorm';
-import { Category } from '../modules/products/entities/category.entity';
+import { Category } from '../modules/categories/entities/category.entity';
 import { ProductImage } from '../modules/products/entities/product-image.entity';
 import { ProductView } from '../modules/products/entities/product-view.entity';
 import { Product } from '../modules/products/entities/product.entity';

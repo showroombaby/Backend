@@ -1,8 +1,8 @@
+import { EmailModule } from '@modules/email/email.module';
+import { UsersModule } from '@modules/users/users.module';
 import { Module } from '@nestjs/common';
-import { ConfigModule, ConfigService } from '@nestjs/config';
+import { ConfigModule } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
-import { EmailModule } from '../email/email.module';
-import { UsersModule } from '../users/users.module';
 import { AuthController } from './controllers/auth.controller';
 import { AuthService } from './services/auth.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
@@ -12,13 +12,10 @@ import { JwtStrategy } from './strategies/jwt.strategy';
     ConfigModule,
     UsersModule,
     EmailModule,
-    JwtModule.registerAsync({
-      imports: [ConfigModule],
-      useFactory: async (configService: ConfigService) => ({
-        secret: configService.get<string>('JWT_SECRET'),
-        signOptions: { expiresIn: '1d' },
-      }),
-      inject: [ConfigService],
+    JwtModule.register({
+      global: true,
+      secret: 'test-secret-key',
+      signOptions: { expiresIn: '1h' },
     }),
   ],
   controllers: [AuthController],

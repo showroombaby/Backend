@@ -10,9 +10,8 @@ import { CategoriesService } from '../../categories/services/categories.service'
 import { SearchProductsDto } from '../dto/search-products.dto';
 import { ProductImage } from '../entities/product-image.entity';
 import { Product, ProductStatus } from '../entities/product.entity';
-import { ProductImagesService } from './product-images.service';
-import { ProductDetailDto, SellerInfoDto } from '../dto/product-detail.dto';
 import { ProductFavoritesService } from './product-favorites.service';
+import { ProductImagesService } from './product-images.service';
 
 @Injectable()
 export class ProductsService {
@@ -157,7 +156,10 @@ export class ProductsService {
       const [items, total] = await queryBuilder.getManyAndCount();
 
       return {
-        items,
+        items: items.map((item) => ({
+          ...item,
+          price: Number(item.price),
+        })),
         total,
         page,
         limit,
@@ -171,6 +173,14 @@ export class ProductsService {
 
   async findOne(id: string): Promise<Product> {
     try {
+      if (
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+          id,
+        )
+      ) {
+        throw new NotFoundException('Product not found');
+      }
+
       const product = await this.productRepository.findOne({
         where: { id },
         relations: ['category', 'images', 'seller'],
@@ -283,7 +293,10 @@ export class ProductsService {
         isFavorite,
       };
     } catch (error) {
-      this.logger.error('Erreur lors de la récupération des détails du produit:', error);
+      this.logger.error(
+        'Erreur lors de la récupération des détails du produit:',
+        error,
+      );
       throw error;
     }
   }
@@ -297,14 +310,21 @@ export class ProductsService {
         .leftJoinAndSelect('product.category', 'category')
         .leftJoinAndSelect('product.images', 'images')
         .leftJoinAndSelect('product.seller', 'seller')
-        .where('product.categoryId = :categoryId', { categoryId: product.categoryId })
+        .where('product.categoryId = :categoryId', {
+          categoryId: product.categoryId,
+        })
         .andWhere('product.id != :id', { id })
-        .andWhere('product.status = :status', { status: ProductStatus.PUBLISHED })
+        .andWhere('product.status = :status', {
+          status: ProductStatus.PUBLISHED,
+        })
         .orderBy('product.viewCount', 'DESC')
         .take(limit)
         .getMany();
     } catch (error) {
-      this.logger.error('Erreur lors de la recherche des produits similaires:', error);
+      this.logger.error(
+        'Erreur lors de la recherche des produits similaires:',
+        error,
+      );
       throw error;
     }
   }
@@ -314,10 +334,10 @@ export class ProductsService {
       id: product.id,
       title: product.title,
       description: product.description,
-      price: product.price,
+      price: Number(product.price),
       condition: product.condition,
       status: product.status,
-      images: product.images.map(img => img.url),
+      images: product.images.map((img) => img.url),
       seller: {
         id: product.seller.id,
         username: product.seller.username,

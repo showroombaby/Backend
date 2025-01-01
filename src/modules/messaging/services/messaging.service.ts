@@ -1,13 +1,21 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { Message } from '../entities/message.entity';
-import { CreateMessageDto, MessageResponseDto, ConversationDto } from '../dto/message.dto';
-import { User } from '../../users/entities/user.entity';
 import { Product } from '../../products/entities/product.entity';
+import { User } from '../../users/entities/user.entity';
+import { CreateMessageDto } from '../dto/create-message.dto';
+import { PaginatedResponse, PaginationDto } from '../dto/pagination.dto';
+import { SearchMessagesDto } from '../dto/search-messages.dto';
+import { Message, MessageStatus } from '../entities/message.entity';
+import {
+  ConversationResult,
+  ConversationWithDetails,
+} from '../interfaces/conversation.interface';
 
 @Injectable()
 export class MessagingService {
+  private readonly logger = new Logger(MessagingService.name);
+
   constructor(
     @InjectRepository(Message)
     private readonly messageRepository: Repository<Message>,
@@ -17,190 +25,398 @@ export class MessagingService {
     private readonly productRepository: Repository<Product>,
   ) {}
 
-  async createMessage(senderId: string, createMessageDto: CreateMessageDto): Promise<MessageResponseDto> {
-    const { receiverId, content, productId } = createMessageDto;
+  async createMessage(
+    senderId: string,
+    createMessageDto: CreateMessageDto,
+  ): Promise<Message> {
+    const { recipientId, productId, content } = createMessageDto;
 
-    const [sender, receiver] = await Promise.all([
-      this.userRepository.findOne({ where: { id: senderId } }),
-      this.userRepository.findOne({ where: { id: receiverId } }),
-    ]);
-
-    if (!sender || !receiver) {
-      throw new NotFoundException('User not found');
+    const recipient = await this.userRepository.findOne({
+      where: { id: recipientId },
+    });
+    if (!recipient) {
+      throw new NotFoundException('Destinataire non trouvé');
     }
 
-    let product = undefined;
     if (productId) {
-      product = await this.productRepository.findOne({
+      const product = await this.productRepository.findOne({
         where: { id: productId },
-        relations: ['images'],
       });
       if (!product) {
-        throw new NotFoundException('Product not found');
+        throw new NotFoundException('Produit non trouvé');
       }
     }
 
     const message = this.messageRepository.create({
       content,
       senderId,
-      receiverId,
+      recipientId,
       productId,
-      sender,
-      receiver,
-      product,
-      isRead: false,
+      status: MessageStatus.SENT,
     });
 
-    const savedMessage = await this.messageRepository.save(message);
-    return this.transformToMessageResponse(savedMessage);
+    return await this.messageRepository.save(message);
   }
 
-  async getConversations(userId: string): Promise<ConversationDto[]> {
-    const messages = await this.messageRepository
+  async getConversation(
+    userId: string,
+    otherUserId: string,
+    pagination: PaginationDto = { page: 1, limit: 10 },
+  ): Promise<PaginatedResponse<Message>> {
+    const skip = (pagination.page - 1) * pagination.limit;
+
+    const [messages, total] = await this.messageRepository.findAndCount({
+      where: [
+        {
+          senderId: userId,
+          recipientId: otherUserId,
+          archivedBySender: false,
+        },
+        {
+          senderId: otherUserId,
+          recipientId: userId,
+          archivedByRecipient: false,
+        },
+      ],
+      order: { createdAt: 'DESC' },
+      relations: ['sender', 'recipient', 'product'],
+      skip,
+      take: pagination.limit,
+    });
+
+    const lastPage = Math.ceil(total / pagination.limit);
+
+    return {
+      data: messages,
+      meta: {
+        total,
+        page: pagination.page,
+        lastPage,
+      },
+    };
+  }
+
+  async getUserConversations(
+    userId: string,
+    pagination: PaginationDto = { page: 1, limit: 10 },
+  ): Promise<PaginatedResponse<ConversationWithDetails>> {
+    const skip = (pagination.page - 1) * pagination.limit;
+
+    const query = this.messageRepository
       .createQueryBuilder('message')
-      .leftJoinAndSelect('message.sender', 'sender')
-      .leftJoinAndSelect('message.receiver', 'receiver')
-      .leftJoinAndSelect('message.product', 'product')
-      .leftJoinAndSelect('product.images', 'images')
-      .where('message.senderId = :userId OR message.receiverId = :userId', {
-        userId,
-      })
-      .orderBy('message.createdAt', 'DESC')
-      .getMany();
+      .select([
+        'CASE WHEN message.sender_id = :userId THEN message.recipient_id ELSE message.sender_id END as otherUserId',
+        'MAX(message.created_at) as lastMessageDate',
+        'COUNT(CASE WHEN message.status = :unreadStatus AND message.recipient_id = :userId THEN 1 END) as unreadCount',
+      ])
+      .where(
+        '(message.sender_id = :userId AND message.archived_by_sender = false) OR (message.recipient_id = :userId AND message.archived_by_recipient = false)',
+        { userId },
+      )
+      .setParameter('unreadStatus', MessageStatus.SENT)
+      .groupBy('otherUserId')
+      .orderBy('lastMessageDate', 'DESC')
+      .offset(skip)
+      .limit(pagination.limit);
 
-    const conversationMap = new Map<string, ConversationDto>();
+    const [rawConversations, total] = await Promise.all([
+      query.getRawMany(),
+      query.getCount(),
+    ]);
 
-    for (const message of messages) {
-      const otherUser =
-        message.sender.id === userId ? message.receiver : message.sender;
-      const conversationKey = otherUser.id;
-
-      if (!conversationMap.has(conversationKey)) {
-        conversationMap.set(conversationKey, {
-          userId: otherUser.id,
-          username: otherUser.username,
-          avatarUrl: otherUser.avatarUrl,
-          name: otherUser.name,
-          email: otherUser.email,
-          rating: otherUser.rating,
-          lastMessage: message.content,
-          unreadCount: 0,
-          lastMessageDate: message.createdAt,
-          productId: message.product?.id,
-          productTitle: message.product?.title,
-          productImage: message.product?.images[0]?.url,
+    const conversationsWithDetails = await Promise.all(
+      rawConversations.map(async (conv: ConversationResult) => {
+        const otherUser = await this.userRepository.findOne({
+          where: { id: conv.otherUserId },
+          select: ['id', 'firstName', 'lastName', 'email', 'avatar'],
         });
-      }
+
+        const lastMessage = await this.messageRepository.findOne({
+          where: [
+            { senderId: userId, recipientId: conv.otherUserId },
+            { senderId: conv.otherUserId, recipientId: userId },
+          ],
+          order: { createdAt: 'DESC' },
+        });
+
+        return {
+          otherUser,
+          lastMessage,
+          unreadCount: parseInt(conv.unreadCount?.toString() || '0'),
+          lastMessageDate: conv.lastMessageDate,
+        };
+      }),
+    );
+
+    const lastPage = Math.ceil(total / pagination.limit);
+
+    return {
+      data: conversationsWithDetails,
+      meta: {
+        total,
+        page: pagination.page,
+        lastPage,
+      },
+    };
+  }
+
+  async markMessageAsRead(messageId: string, userId: string): Promise<Message> {
+    const message = await this.messageRepository.findOne({
+      where: { id: messageId, recipientId: userId },
+    });
+
+    if (!message) {
+      throw new NotFoundException('Message non trouvé');
     }
 
-    return Array.from(conversationMap.values());
+    message.status = MessageStatus.READ;
+    return await this.messageRepository.save(message);
   }
 
-  async getConversation(userId: string, otherUserId: string): Promise<MessageResponseDto[]> {
-    const messages = await this.messageRepository.find({
-      where: [
-        { senderId: userId, receiverId: otherUserId },
-        { senderId: otherUserId, receiverId: userId },
-      ],
-      relations: ['sender', 'receiver', 'product', 'product.images'],
-      order: { createdAt: 'ASC' },
-    });
+  async markConversationAsRead(
+    userId: string,
+    otherUserId: string,
+  ): Promise<void> {
+    await this.messageRepository
+      .createQueryBuilder()
+      .update(Message)
+      .set({ status: MessageStatus.READ })
+      .where('recipient_id = :userId AND sender_id = :otherUserId', {
+        userId,
+        otherUserId,
+      })
+      .execute();
+  }
 
-    // Marquer les messages comme lus
-    const unreadMessages = messages.filter(m => !m.isRead && m.senderId === otherUserId);
-    if (unreadMessages.length > 0) {
-      await Promise.all(
-        unreadMessages.map(message => {
-          message.isRead = true;
-          return this.messageRepository.save(message);
-        }),
+  async searchMessages(
+    userId: string,
+    searchDto: SearchMessagesDto,
+    pagination: PaginationDto = { page: 1, limit: 10 },
+  ): Promise<PaginatedResponse<Message>> {
+    const skip = (pagination.page - 1) * pagination.limit;
+
+    const queryBuilder = this.messageRepository.createQueryBuilder('message');
+
+    queryBuilder.where(
+      '(message.sender_id = :userId AND message.archived_by_sender = false) OR (message.recipient_id = :userId AND message.archived_by_recipient = false)',
+      { userId },
+    );
+
+    if (searchDto.query) {
+      queryBuilder.andWhere('message.content ILIKE :query', {
+        query: `%${searchDto.query}%`,
+      });
+    }
+
+    if (searchDto.productId) {
+      queryBuilder.andWhere('message.product_id = :productId', {
+        productId: searchDto.productId,
+      });
+    }
+
+    if (searchDto.userId) {
+      queryBuilder.andWhere(
+        '(message.sender_id = :otherUserId OR message.recipient_id = :otherUserId)',
+        { otherUserId: searchDto.userId },
       );
     }
 
-    return messages.map(message => this.transformToMessageResponse(message));
-  }
+    queryBuilder
+      .leftJoinAndSelect('message.sender', 'sender')
+      .leftJoinAndSelect('message.recipient', 'recipient')
+      .leftJoinAndSelect('message.product', 'product')
+      .orderBy('message.createdAt', 'DESC')
+      .skip(skip)
+      .take(pagination.limit);
 
-  private transformToMessageResponse(message: Message): MessageResponseDto {
+    const [messages, total] = await queryBuilder.getManyAndCount();
+    const lastPage = Math.ceil(total / pagination.limit);
+
     return {
-      id: message.id,
-      content: message.content,
-      sender: {
-        id: message.sender.id,
-        username: message.sender.username || 'Anonymous',
-        avatarUrl: message.sender.avatarUrl,
-        name: message.sender.name,
-        email: message.sender.email,
-        rating: message.sender.rating,
+      data: messages,
+      meta: {
+        total,
+        page: pagination.page,
+        lastPage,
       },
-      receiver: {
-        id: message.receiver.id,
-        username: message.receiver.username || 'Anonymous',
-        avatarUrl: message.receiver.avatarUrl,
-        name: message.receiver.name,
-        email: message.receiver.email,
-        rating: message.receiver.rating,
-      },
-      product: message.product ? {
-        id: message.product.id,
-        title: message.product.title,
-        price: message.product.price,
-        images: message.product.images || [],
-      } : undefined,
-      isRead: message.isRead,
-      createdAt: message.createdAt,
     };
   }
 
-  private async buildMessageResponse(message: Message): Promise<MessageResponseDto> {
+  async archiveConversation(
+    userId: string,
+    otherUserId: string,
+  ): Promise<void> {
+    await this.messageRepository
+      .createQueryBuilder()
+      .update(Message)
+      .set({
+        archivedBySender: () =>
+          'CASE WHEN sender_id = :userId THEN true ELSE archived_by_sender END',
+        archivedByRecipient: () =>
+          'CASE WHEN recipient_id = :userId THEN true ELSE archived_by_recipient END',
+      })
+      .where(
+        '(sender_id = :userId AND recipient_id = :otherUserId) OR (sender_id = :otherUserId AND recipient_id = :userId)',
+        { userId, otherUserId },
+      )
+      .execute();
+  }
+
+  async unarchiveConversation(
+    userId: string,
+    otherUserId: string,
+  ): Promise<void> {
+    await this.messageRepository
+      .createQueryBuilder()
+      .update(Message)
+      .set({
+        archivedBySender: () =>
+          'CASE WHEN sender_id = :userId THEN false ELSE archived_by_sender END',
+        archivedByRecipient: () =>
+          'CASE WHEN recipient_id = :userId THEN false ELSE archived_by_recipient END',
+      })
+      .where(
+        '(sender_id = :userId AND recipient_id = :otherUserId) OR (sender_id = :otherUserId AND recipient_id = :userId)',
+        { userId, otherUserId },
+      )
+      .execute();
+  }
+
+  async getArchivedConversations(
+    userId: string,
+    pagination: PaginationDto = { page: 1, limit: 10 },
+  ): Promise<PaginatedResponse<ConversationWithDetails>> {
+    const skip = (pagination.page - 1) * pagination.limit;
+
+    const query = this.messageRepository
+      .createQueryBuilder('message')
+      .select([
+        'CASE WHEN message.sender_id = :userId THEN message.recipient_id ELSE message.sender_id END as otherUserId',
+        'MAX(message.created_at) as lastMessageDate',
+      ])
+      .where(
+        '(message.sender_id = :userId AND message.archived_by_sender = true) OR (message.recipient_id = :userId AND message.archived_by_recipient = true)',
+        { userId },
+      )
+      .groupBy('otherUserId')
+      .orderBy('lastMessageDate', 'DESC')
+      .offset(skip)
+      .limit(pagination.limit);
+
+    const [rawConversations, total] = await Promise.all([
+      query.getRawMany(),
+      query.getCount(),
+    ]);
+
+    const conversationsWithDetails = await Promise.all(
+      rawConversations.map(async (conv: ConversationResult) => {
+        const otherUser = await this.userRepository.findOne({
+          where: { id: conv.otherUserId },
+          select: ['id', 'firstName', 'lastName', 'email', 'avatar'],
+        });
+
+        const lastMessage = await this.messageRepository.findOne({
+          where: [
+            { senderId: userId, recipientId: conv.otherUserId },
+            { senderId: conv.otherUserId, recipientId: userId },
+          ],
+          order: { createdAt: 'DESC' },
+        });
+
+        return {
+          otherUser,
+          lastMessage,
+          lastMessageDate: conv.lastMessageDate,
+        };
+      }),
+    );
+
+    const lastPage = Math.ceil(total / pagination.limit);
+
     return {
-      id: message.id,
-      content: message.content,
-      sender: {
-        id: message.sender.id,
-        username: message.sender.username,
-        avatarUrl: message.sender.avatarUrl,
-        name: message.sender.name,
-        email: message.sender.email,
-        rating: message.sender.rating,
+      data: conversationsWithDetails,
+      meta: {
+        total,
+        page: pagination.page,
+        lastPage,
       },
-      receiver: {
-        id: message.receiver.id,
-        username: message.receiver.username,
-        avatarUrl: message.receiver.avatarUrl,
-        name: message.receiver.name,
-        email: message.receiver.email,
-        rating: message.receiver.rating,
-      },
-      product: message.product
-        ? {
-            id: message.product.id,
-            title: message.product.title,
-            price: message.product.price,
-            images: message.product.images,
-          }
-        : undefined,
-      isRead: message.isRead,
-      createdAt: message.createdAt,
     };
   }
 
-  private async buildConversationResponse(
-    otherUser: User,
-    message: Message,
-  ): Promise<ConversationDto> {
+  async archiveMessage(messageId: string, userId: string): Promise<Message> {
+    const message = await this.messageRepository.findOne({
+      where: [
+        { id: messageId, senderId: userId },
+        { id: messageId, recipientId: userId },
+      ],
+    });
+
+    if (!message) {
+      throw new NotFoundException('Message non trouvé');
+    }
+
+    if (message.senderId === userId) {
+      message.archivedBySender = true;
+    }
+    if (message.recipientId === userId) {
+      message.archivedByRecipient = true;
+    }
+
+    return await this.messageRepository.save(message);
+  }
+
+  async unarchiveMessage(messageId: string, userId: string): Promise<Message> {
+    const message = await this.messageRepository.findOne({
+      where: [
+        { id: messageId, senderId: userId },
+        { id: messageId, recipientId: userId },
+      ],
+    });
+
+    if (!message) {
+      throw new NotFoundException('Message non trouvé');
+    }
+
+    if (message.senderId === userId) {
+      message.archivedBySender = false;
+    }
+    if (message.recipientId === userId) {
+      message.archivedByRecipient = false;
+    }
+
+    return await this.messageRepository.save(message);
+  }
+
+  async getArchivedMessages(
+    userId: string,
+    pagination: PaginationDto = { page: 1, limit: 10 },
+  ): Promise<PaginatedResponse<Message>> {
+    const skip = (pagination.page - 1) * pagination.limit;
+
+    const queryBuilder = this.messageRepository.createQueryBuilder('message');
+
+    queryBuilder
+      .where(
+        '(message.sender_id = :userId AND message.archived_by_sender = true) OR (message.recipient_id = :userId AND message.archived_by_recipient = true)',
+        { userId },
+      )
+      .leftJoinAndSelect('message.sender', 'sender')
+      .leftJoinAndSelect('message.recipient', 'recipient')
+      .leftJoinAndSelect('message.product', 'product')
+      .orderBy('message.createdAt', 'DESC')
+      .skip(skip)
+      .take(pagination.limit);
+
+    const [messages, total] = await queryBuilder.getManyAndCount();
+    const lastPage = Math.ceil(total / pagination.limit);
+
     return {
-      userId: otherUser.id,
-      username: otherUser.username,
-      avatarUrl: otherUser.avatarUrl,
-      name: otherUser.name,
-      email: otherUser.email,
-      rating: otherUser.rating,
-      lastMessage: message.content,
-      unreadCount: 0,
-      lastMessageDate: message.createdAt,
-      productId: message.product?.id,
-      productTitle: message.product?.title,
-      productImage: message.product?.images[0]?.url,
+      data: messages,
+      meta: {
+        total,
+        page: pagination.page,
+        lastPage,
+      },
     };
   }
-} 
+}

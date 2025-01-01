@@ -2,15 +2,18 @@ import { NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { Category } from '../../../products/entities/category.entity';
+import { Category } from '../../entities/category.entity';
 import { CategoriesService } from '../../services/categories.service';
 
 describe('CategoriesService', () => {
   let service: CategoriesService;
   let repository: Repository<Category>;
 
+  const validUUID = '123e4567-e89b-12d3-a456-426614174000';
+  const nonExistentUUID = '123e4567-e89b-12d3-a456-426614174999';
+
   const mockCategory: Partial<Category> = {
-    id: '1',
+    id: validUUID,
     name: 'Test Category',
     description: 'Test Description',
     products: [],
@@ -75,18 +78,20 @@ describe('CategoriesService', () => {
     it('devrait retourner une catégorie par son ID', async () => {
       mockRepository.findOne.mockResolvedValue(mockCategory);
 
-      const result = await service.findOne('1');
+      const result = await service.findOne(validUUID);
 
       expect(result).toEqual(mockCategory);
       expect(repository.findOne).toHaveBeenCalledWith({
-        where: { id: '1' },
+        where: { id: validUUID },
       });
     });
 
     it("devrait lever une exception si la catégorie n'existe pas", async () => {
       mockRepository.findOne.mockResolvedValue(null);
 
-      await expect(service.findOne('999')).rejects.toThrow(NotFoundException);
+      await expect(service.findOne(nonExistentUUID)).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 
@@ -103,14 +108,14 @@ describe('CategoriesService', () => {
         ...updateCategoryDto,
       });
 
-      const result = await service.update('1', updateCategoryDto);
+      const result = await service.update(validUUID, updateCategoryDto);
 
       expect(result).toEqual({
         ...mockCategory,
         ...updateCategoryDto,
       });
       expect(repository.findOne).toHaveBeenCalledWith({
-        where: { id: '1' },
+        where: { id: validUUID },
       });
       expect(repository.save).toHaveBeenCalled();
     });
@@ -118,9 +123,9 @@ describe('CategoriesService', () => {
     it("devrait lever une exception si la catégorie n'existe pas", async () => {
       mockRepository.findOne.mockResolvedValue(null);
 
-      await expect(service.update('999', updateCategoryDto)).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(
+        service.update(nonExistentUUID, updateCategoryDto),
+      ).rejects.toThrow(NotFoundException);
     });
   });
 
@@ -129,18 +134,20 @@ describe('CategoriesService', () => {
       mockRepository.findOne.mockResolvedValue(mockCategory);
       mockRepository.delete.mockResolvedValue({ affected: 1 });
 
-      await service.remove('1');
+      await service.remove(validUUID);
 
       expect(repository.findOne).toHaveBeenCalledWith({
-        where: { id: '1' },
+        where: { id: validUUID },
       });
-      expect(repository.delete).toHaveBeenCalledWith('1');
+      expect(repository.delete).toHaveBeenCalledWith(validUUID);
     });
 
     it("devrait lever une exception si la catégorie n'existe pas", async () => {
       mockRepository.findOne.mockResolvedValue(null);
 
-      await expect(service.remove('999')).rejects.toThrow(NotFoundException);
+      await expect(service.remove(nonExistentUUID)).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 });

@@ -8,9 +8,9 @@ import {
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
+import { Category } from '../../categories/entities/category.entity';
 import { User } from '../../users/entities/user.entity';
 import { ProductCondition } from '../enums/product-condition.enum';
-import { Category } from './category.entity';
 import { ProductImage } from './product-image.entity';
 import { ProductView } from './product-view.entity';
 

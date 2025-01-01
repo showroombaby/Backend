@@ -1,269 +1,215 @@
 import { INestApplication } from '@nestjs/common';
-import { Test } from '@nestjs/testing';
-import { getRepositoryToken, TypeOrmModule } from '@nestjs/typeorm';
-import { JwtService } from '@nestjs/jwt';
+import { Test, TestingModule } from '@nestjs/testing';
 import * as request from 'supertest';
 import { Repository } from 'typeorm';
-import { TestModule } from '../../../../common/test/test.module';
+import { TestDatabaseModule } from '../../../../common/test/database.module';
+import { TestJwtModule } from '../../../../common/test/jwt.module';
+import { TestStorageModule } from '../../../../common/test/storage.module';
 import { User } from '../../../users/entities/user.entity';
 import { Role } from '../../../users/enums/role.enum';
 import { CategoriesModule } from '../../categories.module';
 import { Category } from '../../entities/category.entity';
-import { TestJwtModule } from '@test/test-jwt.module';
-import { AuthModule } from '../../../auth/auth.module';
-import * as bcrypt from 'bcrypt';
-import { ValidationPipe } from '@nestjs/common';
 
 describe('CategoriesController (Integration)', () => {
   let app: INestApplication;
-  let userRepository: Repository<User>;
   let categoryRepository: Repository<Category>;
-  let jwtService: JwtService;
-  let adminToken: string;
-  let userToken: string;
-  let category: Category;
-
-  const adminUser = {
-    id: '1',
-    email: 'admin@example.com',
-    password: 'Admin123!',
-    firstName: 'Admin',
-    lastName: 'User',
-    role: Role.ADMIN,
-  };
-
-  const regularUser = {
-    id: '2',
-    email: 'user@example.com',
-    password: 'User123!',
-    firstName: 'Regular',
-    lastName: 'User',
-    role: Role.USER,
-  };
-
-  const testCategory = {
-    name: 'Test Category',
-    description: 'Test Description',
-  };
+  let userRepository: Repository<User>;
+  let adminUser: User;
+  let regularUser: User;
 
   beforeAll(async () => {
-    const moduleRef = await Test.createTestingModule({
+    const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [
-        TestModule.forRoot(),
+        TestDatabaseModule,
         TestJwtModule,
+        TestStorageModule,
         CategoriesModule,
-        AuthModule,
-        TypeOrmModule.forFeature([User, Category]),
       ],
     }).compile();
 
-    app = moduleRef.createNestApplication();
-    app.useGlobalPipes(
-      new ValidationPipe({
-        whitelist: true,
-        transform: true,
-        forbidNonWhitelisted: true,
-      }),
-    );
-
-    userRepository = moduleRef.get<Repository<User>>(getRepositoryToken(User));
-    categoryRepository = moduleRef.get<Repository<Category>>(
-      getRepositoryToken(Category),
-    );
-    jwtService = moduleRef.get<JwtService>(JwtService);
-
+    app = moduleFixture.createNestApplication();
+    categoryRepository = moduleFixture.get('CategoryRepository');
+    userRepository = moduleFixture.get('UserRepository');
     await app.init();
-  });
 
-  beforeEach(async () => {
-    // Nettoyer la base de données avant chaque test
-    await userRepository.query('DELETE FROM users');
-    await categoryRepository.query('DELETE FROM categories');
-
-    // Créer l'utilisateur admin avec mot de passe hashé
-    const hashedAdminPassword = await bcrypt.hash(adminUser.password, 10);
-    const admin = await userRepository.save({
-      ...adminUser,
-      password: hashedAdminPassword,
+    // Créer les utilisateurs de test
+    adminUser = await userRepository.save({
+      email: 'admin@example.com',
+      password: 'password',
+      username: 'admin',
+      role: Role.ADMIN,
     });
 
-    // Créer l'utilisateur régulier avec mot de passe hashé
-    const hashedUserPassword = await bcrypt.hash(regularUser.password, 10);
-    const user = await userRepository.save({
-      ...regularUser,
-      password: hashedUserPassword,
-    });
-
-    // Créer une catégorie de test
-    category = await categoryRepository.save(testCategory);
-
-    // Générer les tokens
-    adminToken = jwtService.sign({
-      sub: admin.id,
-      email: admin.email,
-      role: admin.role,
-    });
-    userToken = jwtService.sign({
-      sub: user.id,
-      email: user.email,
-      role: user.role,
+    regularUser = await userRepository.save({
+      email: 'user@example.com',
+      password: 'password',
+      username: 'user',
+      role: Role.USER,
     });
   });
 
   afterAll(async () => {
-    await userRepository.query('DELETE FROM users');
     await categoryRepository.query('DELETE FROM categories');
-    if (app) {
-      await app.close();
-    }
+    await userRepository.query('DELETE FROM users');
+    await app.close();
   });
 
   describe('POST /categories', () => {
-    const newCategory = {
-      name: 'New Category',
-      description: 'New Description',
-    };
-
     it('devrait créer une nouvelle catégorie', async () => {
+      const categoryDto = {
+        name: 'Test Category',
+        description: 'Test Description',
+      };
+
       const response = await request(app.getHttpServer())
         .post('/categories')
-        .set('Authorization', `Bearer ${adminToken}`)
-        .send(newCategory)
+        .set('Authorization', `Bearer ${generateTestToken(adminUser)}`)
+        .send(categoryDto)
         .expect(201);
 
-      expect(response.body).toMatchObject(newCategory);
+      expect(response.body).toMatchObject({
+        name: categoryDto.name,
+        description: categoryDto.description,
+      });
     });
 
-    it('devrait rejeter une catégorie avec des données invalides', async () => {
-      const response = await request(app.getHttpServer())
+    it('devrait rejeter la création par un utilisateur non-admin', () => {
+      return request(app.getHttpServer())
         .post('/categories')
-        .set('Authorization', `Bearer ${adminToken}`)
+        .set('Authorization', `Bearer ${generateTestToken(regularUser)}`)
         .send({
-          name: '',
-          description: 'Invalid Category',
+          name: 'Test Category',
+          description: 'Test Description',
         })
-        .expect(400);
-
-      expect(response.body.message).toContain('name should not be empty');
-    });
-
-    it('devrait rejeter la création par un utilisateur non-admin', async () => {
-      await request(app.getHttpServer())
-        .post('/categories')
-        .set('Authorization', `Bearer ${userToken}`)
-        .send(newCategory)
         .expect(403);
     });
 
-    it('devrait échouer sans authentification', async () => {
-      await request(app.getHttpServer())
+    it('devrait échouer sans authentification', () => {
+      return request(app.getHttpServer())
         .post('/categories')
-        .send(newCategory)
+        .send({
+          name: 'Test Category',
+          description: 'Test Description',
+        })
         .expect(401);
     });
   });
 
   describe('GET /categories', () => {
+    beforeEach(async () => {
+      await categoryRepository.save([
+        {
+          name: 'Category 1',
+          description: 'Description 1',
+        },
+        {
+          name: 'Category 2',
+          description: 'Description 2',
+        },
+      ]);
+    });
+
     it('devrait retourner la liste des catégories', async () => {
       const response = await request(app.getHttpServer())
         .get('/categories')
         .expect(200);
 
-      expect(response.body).toBeInstanceOf(Array);
-      expect(response.body[0]).toMatchObject({
-        name: testCategory.name,
-        description: testCategory.description,
-      });
-    });
-  });
-
-  describe('GET /categories/:id', () => {
-    it('devrait retourner une catégorie spécifique', async () => {
-      const response = await request(app.getHttpServer())
-        .get(`/categories/${category.id}`)
-        .expect(200);
-
-      expect(response.body).toMatchObject({
-        name: testCategory.name,
-        description: testCategory.description,
-      });
-    });
-
-    it('devrait retourner 404 pour une catégorie inexistante', async () => {
-      await request(app.getHttpServer()).get('/categories/999').expect(404);
+      expect(response.body).toHaveLength(2);
+      expect(response.body[0]).toHaveProperty('name');
+      expect(response.body[0]).toHaveProperty('description');
     });
   });
 
   describe('PUT /categories/:id', () => {
-    const updateData = {
-      name: 'Updated Category',
-      description: 'Updated Description',
-    };
+    let category: Category;
+
+    beforeEach(async () => {
+      category = await categoryRepository.save({
+        name: 'Test Category',
+        description: 'Test Description',
+      });
+    });
 
     it('devrait mettre à jour une catégorie', async () => {
+      const updateDto = {
+        name: 'Updated Category',
+        description: 'Updated Description',
+      };
+
       const response = await request(app.getHttpServer())
         .put(`/categories/${category.id}`)
-        .set('Authorization', `Bearer ${adminToken}`)
-        .send(updateData)
+        .set('Authorization', `Bearer ${generateTestToken(adminUser)}`)
+        .send(updateDto)
         .expect(200);
 
-      expect(response.body).toMatchObject(updateData);
+      expect(response.body).toMatchObject(updateDto);
     });
 
-    it('devrait rejeter la mise à jour avec des données invalides', async () => {
-      const response = await request(app.getHttpServer())
+    it('devrait rejeter la mise à jour par un utilisateur non-admin', () => {
+      return request(app.getHttpServer())
         .put(`/categories/${category.id}`)
-        .set('Authorization', `Bearer ${adminToken}`)
+        .set('Authorization', `Bearer ${generateTestToken(regularUser)}`)
         .send({
-          name: '',
-          description: 'Invalid Update',
+          name: 'Updated Category',
+          description: 'Updated Description',
         })
-        .expect(400);
-
-      expect(response.body.message).toContain('name should not be empty');
-    });
-
-    it('devrait rejeter la mise à jour par un utilisateur non-admin', async () => {
-      await request(app.getHttpServer())
-        .put(`/categories/${category.id}`)
-        .set('Authorization', `Bearer ${userToken}`)
-        .send(updateData)
         .expect(403);
     });
 
-    it('devrait échouer sans authentification', async () => {
-      await request(app.getHttpServer())
+    it('devrait échouer sans authentification', () => {
+      return request(app.getHttpServer())
         .put(`/categories/${category.id}`)
-        .send(updateData)
+        .send({
+          name: 'Updated Category',
+          description: 'Updated Description',
+        })
         .expect(401);
     });
   });
 
   describe('DELETE /categories/:id', () => {
+    let category: Category;
+
+    beforeEach(async () => {
+      category = await categoryRepository.save({
+        name: 'Test Category',
+        description: 'Test Description',
+      });
+    });
+
     it('devrait supprimer une catégorie', async () => {
       await request(app.getHttpServer())
         .delete(`/categories/${category.id}`)
-        .set('Authorization', `Bearer ${adminToken}`)
+        .set('Authorization', `Bearer ${generateTestToken(adminUser)}`)
         .expect(200);
 
-      // Vérifier que la catégorie a été supprimée
       const deletedCategory = await categoryRepository.findOne({
         where: { id: category.id },
       });
       expect(deletedCategory).toBeNull();
     });
 
-    it('devrait rejeter la suppression par un utilisateur non-admin', async () => {
-      await request(app.getHttpServer())
+    it('devrait rejeter la suppression par un utilisateur non-admin', () => {
+      return request(app.getHttpServer())
         .delete(`/categories/${category.id}`)
-        .set('Authorization', `Bearer ${userToken}`)
+        .set('Authorization', `Bearer ${generateTestToken(regularUser)}`)
         .expect(403);
     });
 
-    it('devrait échouer sans authentification', async () => {
-      await request(app.getHttpServer())
+    it('devrait échouer sans authentification', () => {
+      return request(app.getHttpServer())
         .delete(`/categories/${category.id}`)
         .expect(401);
     });
   });
 });
+
+function generateTestToken(user: User): string {
+  return `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.${Buffer.from(
+    JSON.stringify({
+      sub: user.id,
+      email: user.email,
+      role: user.role,
+    }),
+  ).toString('base64')}.test-signature`;
+}

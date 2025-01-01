@@ -1,4 +1,4 @@
-import { Category } from '@/modules/products/entities/category.entity';
+import { Category } from '@/modules/categories/entities/category.entity';
 
 export const categories: Partial<Category>[] = [
   {

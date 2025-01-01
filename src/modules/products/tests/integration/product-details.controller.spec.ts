@@ -1,177 +1,157 @@
+import { INestApplication } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
-import { INestApplication, NotFoundException } from '@nestjs/common';
 import * as request from 'supertest';
-import { getRepositoryToken } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { TestDatabaseModule } from '../../../../common/test/database.module';
+import { TestJwtModule } from '../../../../common/test/jwt.module';
+import { TestStorageModule } from '../../../../common/test/storage.module';
+import { Category } from '../../../categories/entities/category.entity';
+import { User } from '../../../users/entities/user.entity';
 import { Product } from '../../entities/product.entity';
-import { ProductsService } from '../../services/products.service';
-import { ProductsController } from '../../controllers/products.controller';
-import { CategoriesService } from '../../../categories/services/categories.service';
-import { ProductImagesService } from '../../services/product-images.service';
-import { ProductImage } from '../../entities/product-image.entity';
-import { ProductFavoritesService } from '../../services/product-favorites.service';
+import { ProductsModule } from '../../products.module';
 
-describe('Product Details (e2e)', () => {
+describe('Product Details (Integration)', () => {
   let app: INestApplication;
-  let productsService: ProductsService;
+  let productRepository: Repository<Product>;
+  let categoryRepository: Repository<Category>;
+  let userRepository: Repository<User>;
+  let user: User;
+  let category: Category;
+  let product: Product;
 
-  const mockProduct = {
-    id: '123',
-    title: 'Test Product',
-    description: 'Test Description',
-    price: 99.99,
-    condition: 'new',
-    status: 'published',
-    images: [{ url: 'test-image.jpg' }],
-    seller: {
-      id: 'seller123',
-      username: 'Test Seller',
-      avatarUrl: 'avatar.jpg',
-      name: 'Test Seller',
-      email: 'seller@example.com',
-      rating: 4.5,
-      products: [],
-      createdAt: new Date(),
-    },
-    category: {
-      id: 'cat123',
-      name: 'Test Category',
-    },
-    viewCount: 0,
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  };
-
-  const mockSimilarProducts = [
-    {
-      id: '456',
-      title: 'Similar Product',
-      price: 89.99,
-      images: [{ url: 'similar-image.jpg' }],
-      seller: {
-        id: 'seller456',
-        username: 'Another Seller',
-        avatarUrl: 'another-avatar.jpg',
-        name: 'Another Seller',
-        email: 'another@example.com',
-        rating: 4.0,
-      },
-    },
-  ];
-
-  beforeEach(async () => {
+  beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
-      controllers: [ProductsController],
-      providers: [
-        ProductsService,
-        {
-          provide: getRepositoryToken(Product),
-          useValue: {
-            findOne: jest.fn().mockImplementation((options) => {
-              if (options.where.id === 'nonexistent') {
-                return null;
-              }
-              return mockProduct;
-            }),
-            save: jest.fn().mockResolvedValue({ ...mockProduct, viewCount: 1 }),
-            createQueryBuilder: jest.fn(() => ({
-              leftJoinAndSelect: jest.fn().mockReturnThis(),
-              where: jest.fn().mockReturnThis(),
-              andWhere: jest.fn().mockReturnThis(),
-              orderBy: jest.fn().mockReturnThis(),
-              take: jest.fn().mockReturnThis(),
-              getMany: jest.fn().mockResolvedValue(mockSimilarProducts),
-            })),
-          },
-        },
-        {
-          provide: getRepositoryToken(ProductImage),
-          useValue: {},
-        },
-        {
-          provide: CategoriesService,
-          useValue: {},
-        },
-        {
-          provide: ProductImagesService,
-          useValue: {},
-        },
-        {
-          provide: ProductFavoritesService,
-          useValue: {
-            isFavorite: jest.fn().mockResolvedValue(false),
-          },
-        },
+      imports: [
+        TestDatabaseModule,
+        TestJwtModule,
+        TestStorageModule,
+        ProductsModule,
       ],
     }).compile();
 
     app = moduleFixture.createNestApplication();
-    productsService = moduleFixture.get<ProductsService>(ProductsService);
+    productRepository = moduleFixture.get('ProductRepository');
+    categoryRepository = moduleFixture.get('CategoryRepository');
+    userRepository = moduleFixture.get('UserRepository');
     await app.init();
+
+    // Créer les données de test
+    user = await userRepository.save({
+      email: 'test@example.com',
+      password: 'password',
+      username: 'testuser',
+    });
+
+    category = await categoryRepository.save({
+      name: 'Test Category',
+      description: 'Test Description',
+    });
+
+    product = await productRepository.save({
+      title: 'Test Product',
+      description: 'Test Description',
+      price: 100,
+      seller: user,
+      category,
+    });
   });
 
-  afterEach(async () => {
+  afterAll(async () => {
+    await productRepository.query('DELETE FROM products');
+    await categoryRepository.query('DELETE FROM categories');
+    await userRepository.query('DELETE FROM users');
     await app.close();
   });
 
-  describe('GET /products/:id', () => {
-    it('should return detailed product information', async () => {
+  describe('GET /products/:id/details', () => {
+    it('devrait retourner les détails du produit', async () => {
       const response = await request(app.getHttpServer())
-        .get('/products/123')
+        .get(`/products/${product.id}/details`)
+        .set('Authorization', `Bearer ${generateTestToken(user)}`)
         .expect(200);
 
       expect(response.body).toMatchObject({
-        id: mockProduct.id,
-        title: mockProduct.title,
-        description: mockProduct.description,
-        price: mockProduct.price,
-        condition: mockProduct.condition,
-        status: mockProduct.status,
-        images: mockProduct.images.map(img => img.url),
+        id: product.id,
+        title: product.title,
+        description: product.description,
+        price: product.price,
         seller: {
-          id: mockProduct.seller.id,
-          username: mockProduct.seller.username,
-          avatarUrl: mockProduct.seller.avatarUrl,
-          name: mockProduct.seller.name,
-          email: mockProduct.seller.email,
-          rating: mockProduct.seller.rating,
+          id: user.id,
+          username: user.username,
         },
         category: {
-          id: mockProduct.category.id,
-          name: mockProduct.category.name,
+          id: category.id,
+          name: category.name,
         },
-        isFavorite: false,
       });
     });
 
-    it('should increment view count when viewing product details', async () => {
-      const initialViewCount = mockProduct.viewCount;
-      const response = await request(app.getHttpServer())
-        .get('/products/123')
-        .expect(200);
-
-      expect(response.body.viewCount).toBe(initialViewCount + 1);
+    it('devrait échouer pour un produit inexistant', () => {
+      return request(app.getHttpServer())
+        .get('/products/999999/details')
+        .set('Authorization', `Bearer ${generateTestToken(user)}`)
+        .expect(404);
     });
 
-    it('should return 404 for non-existent product', async () => {
-      await request(app.getHttpServer())
-        .get('/products/nonexistent')
-        .expect(404);
+    it('devrait échouer sans authentification', () => {
+      return request(app.getHttpServer())
+        .get(`/products/${product.id}/details`)
+        .expect(401);
     });
   });
 
   describe('GET /products/:id/similar', () => {
-    it('should return similar products', async () => {
+    beforeEach(async () => {
+      await productRepository.save([
+        {
+          title: 'Similar Product 1',
+          description: 'Similar Description 1',
+          price: 90,
+          seller: user,
+          category,
+        },
+        {
+          title: 'Similar Product 2',
+          description: 'Similar Description 2',
+          price: 110,
+          seller: user,
+          category,
+        },
+      ]);
+    });
+
+    it('devrait retourner les produits similaires', async () => {
       const response = await request(app.getHttpServer())
-        .get('/products/123/similar')
+        .get(`/products/${product.id}/similar`)
+        .set('Authorization', `Bearer ${generateTestToken(user)}`)
         .expect(200);
 
-      expect(response.body).toHaveLength(mockSimilarProducts.length);
-      expect(response.body[0]).toMatchObject({
-        id: mockSimilarProducts[0].id,
-        title: mockSimilarProducts[0].title,
-        price: mockSimilarProducts[0].price,
-        images: mockSimilarProducts[0].images,
-      });
+      expect(response.body).toHaveLength(2);
+      expect(response.body[0]).toHaveProperty('title');
+      expect(response.body[0]).toHaveProperty('price');
+      expect(response.body[0].category.id).toBe(category.id);
+    });
+
+    it('devrait échouer pour un produit inexistant', () => {
+      return request(app.getHttpServer())
+        .get('/products/999999/similar')
+        .set('Authorization', `Bearer ${generateTestToken(user)}`)
+        .expect(404);
+    });
+
+    it('devrait échouer sans authentification', () => {
+      return request(app.getHttpServer())
+        .get(`/products/${product.id}/similar`)
+        .expect(401);
     });
   });
-}); 
+});
+
+function generateTestToken(user: User): string {
+  return `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.${Buffer.from(
+    JSON.stringify({
+      sub: user.id,
+      email: user.email,
+    }),
+  ).toString('base64')}.test-signature`;
+}

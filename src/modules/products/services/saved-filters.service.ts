@@ -1,9 +1,9 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { SavedFilter } from '../entities/saved-filter.entity';
 import { CreateSavedFilterDto } from '../dto/create-saved-filter.dto';
 import { UpdateSavedFilterDto } from '../dto/update-saved-filter.dto';
+import { SavedFilter } from '../entities/saved-filter.entity';
 
 @Injectable()
 export class SavedFiltersService {
@@ -48,6 +48,14 @@ export class SavedFiltersService {
 
   async findOne(id: string, userId: string): Promise<SavedFilter> {
     try {
+      if (
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+          id,
+        )
+      ) {
+        throw new NotFoundException('Invalid filter ID format');
+      }
+
       const filter = await this.savedFilterRepository.findOne({
         where: { id, userId },
       });
@@ -59,7 +67,10 @@ export class SavedFiltersService {
       return filter;
     } catch (error) {
       this.logger.error('Erreur lors de la récupération du filtre:', error);
-      throw error;
+      if (error instanceof NotFoundException) {
+        throw error;
+      }
+      throw new NotFoundException('Filter not found');
     }
   }
 

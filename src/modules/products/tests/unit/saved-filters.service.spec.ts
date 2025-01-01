@@ -1,3 +1,4 @@
+import { User } from '@/modules/users/entities/user.entity';
 import { NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
@@ -8,7 +9,6 @@ import { UpdateSavedFilterDto } from '../../dto/update-saved-filter.dto';
 import { SavedFilter } from '../../entities/saved-filter.entity';
 import { ProductCondition } from '../../enums/product-condition.enum';
 import { SavedFiltersService } from '../../services/saved-filters.service';
-import { User } from '@/modules/users/entities/user.entity';
 
 describe('SavedFiltersService', () => {
   let service: SavedFiltersService;
@@ -16,7 +16,7 @@ describe('SavedFiltersService', () => {
 
   // Fixtures
   const userFixture = {
-    id: '1',
+    id: '123e4567-e89b-12d3-a456-426614174000',
     email: 'admin@example.com',
     firstName: 'Admin',
     lastName: 'User',
@@ -39,13 +39,13 @@ describe('SavedFiltersService', () => {
   };
 
   const savedFilterFixture: SavedFilter = {
-    id: '1',
+    id: '123e4567-e89b-12d3-a456-426614174001',
     name: 'Test Filter',
     filters: {
       minPrice: 50,
       maxPrice: 150,
       condition: ProductCondition.LIKE_NEW,
-      categoryId: '1',
+      categoryId: '123e4567-e89b-12d3-a456-426614174002',
     },
     user: userFixture as unknown as User,
     userId: userFixture.id,
@@ -87,7 +87,7 @@ describe('SavedFiltersService', () => {
         minPrice: 50,
         maxPrice: 150,
         condition: ProductCondition.LIKE_NEW,
-        categoryId: '1',
+        categoryId: '123e4567-e89b-12d3-a456-426614174002',
       },
     };
 
@@ -171,12 +171,18 @@ describe('SavedFiltersService', () => {
       mockRepository.findOne.mockResolvedValue(savedFilterFixture);
 
       // Act
-      const result = await service.findOne('1', userFixture.id);
+      const result = await service.findOne(
+        '123e4567-e89b-12d3-a456-426614174001',
+        userFixture.id,
+      );
 
       // Assert
       expect(result).toEqual(savedFilterFixture);
       expect(repository.findOne).toHaveBeenCalledWith({
-        where: { id: '1', userId: userFixture.id },
+        where: {
+          id: '123e4567-e89b-12d3-a456-426614174001',
+          userId: userFixture.id,
+        },
       });
     });
 
@@ -198,7 +204,7 @@ describe('SavedFiltersService', () => {
         minPrice: 100,
         maxPrice: 200,
         condition: ProductCondition.LIKE_NEW,
-        categoryId: '2',
+        categoryId: '123e4567-e89b-12d3-a456-426614174003',
       },
     };
 
@@ -209,12 +215,19 @@ describe('SavedFiltersService', () => {
       mockRepository.save.mockResolvedValue(updatedFilter);
 
       // Act
-      const result = await service.update('1', updateDto, userFixture.id);
+      const result = await service.update(
+        '123e4567-e89b-12d3-a456-426614174001',
+        updateDto,
+        userFixture.id,
+      );
 
       // Assert
       expect(result).toEqual(updatedFilter);
       expect(repository.findOne).toHaveBeenCalledWith({
-        where: { id: '1', userId: userFixture.id },
+        where: {
+          id: '123e4567-e89b-12d3-a456-426614174001',
+          userId: userFixture.id,
+        },
       });
       expect(repository.save).toHaveBeenCalledWith({
         ...savedFilterFixture,
@@ -240,7 +253,11 @@ describe('SavedFiltersService', () => {
 
       // Act & Assert
       await expect(
-        service.update('1', updateDto, userFixture.id),
+        service.update(
+          '123e4567-e89b-12d3-a456-426614174001',
+          updateDto,
+          userFixture.id,
+        ),
       ).rejects.toThrow(dbError);
     });
   });
@@ -252,11 +269,17 @@ describe('SavedFiltersService', () => {
       mockRepository.remove.mockResolvedValue(savedFilterFixture);
 
       // Act
-      await service.remove('1', userFixture.id);
+      await service.remove(
+        '123e4567-e89b-12d3-a456-426614174001',
+        userFixture.id,
+      );
 
       // Assert
       expect(repository.findOne).toHaveBeenCalledWith({
-        where: { id: '1', userId: userFixture.id },
+        where: {
+          id: '123e4567-e89b-12d3-a456-426614174001',
+          userId: userFixture.id,
+        },
       });
       expect(repository.remove).toHaveBeenCalledWith(savedFilterFixture);
     });
@@ -278,9 +301,9 @@ describe('SavedFiltersService', () => {
       mockRepository.remove.mockRejectedValue(dbError);
 
       // Act & Assert
-      await expect(service.remove('1', userFixture.id)).rejects.toThrow(
-        dbError,
-      );
+      await expect(
+        service.remove('123e4567-e89b-12d3-a456-426614174001', userFixture.id),
+      ).rejects.toThrow(dbError);
     });
   });
 });

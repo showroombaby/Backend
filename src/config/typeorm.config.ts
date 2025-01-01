@@ -7,7 +7,7 @@ import { AddSavedFilters1710000000003 } from '../migrations/1710000000003-add-sa
 import { AddUserFields1710000000004 } from '../migrations/1710000000004-add-user-fields';
 import { AddUserFields1710000000005 } from '../migrations/1710000000005-add-user-fields';
 import { CreateMessagesTable1710000000005 } from '../migrations/1710000000005-create-messages-table';
-import { Category } from '../modules/products/entities/category.entity';
+import { Category } from '../modules/categories/entities/category.entity';
 import { ProductImage } from '../modules/products/entities/product-image.entity';
 import { ProductView } from '../modules/products/entities/product-view.entity';
 import { Product } from '../modules/products/entities/product.entity';

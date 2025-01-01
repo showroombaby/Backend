@@ -1,18 +1,16 @@
-import { NotFoundException } from '@nestjs/common';
+import { NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { DataSource, Repository } from 'typeorm';
+import { Category } from '../../../categories/entities/category.entity';
 import { CategoriesService } from '../../../categories/services/categories.service';
-import { Category } from '../../entities/category.entity';
+import { User } from '../../../users/entities/user.entity';
 import { ProductImage } from '../../entities/product-image.entity';
 import { Product, ProductStatus } from '../../entities/product.entity';
 import { ProductCondition } from '../../enums/product-condition.enum';
+import { ProductFavoritesService } from '../../services/product-favorites.service';
 import { ProductImagesService } from '../../services/product-images.service';
 import { ProductsService } from '../../services/products.service';
-import { ProductFavoritesService } from '../../services/product-favorites.service';
-import { DataSource } from 'typeorm';
-import { Express } from 'express';
-import { User } from '../../../users/entities/user.entity';
 
 describe('ProductsService', () => {
   let service: ProductsService;
@@ -20,24 +18,25 @@ describe('ProductsService', () => {
   let productImageRepository: Repository<ProductImage>;
   let productImagesService: ProductImagesService;
   let categoriesService: CategoriesService;
+  let productFavoritesService: ProductFavoritesService;
 
   const mockProduct: Partial<Product> = {
-    id: '1',
+    id: '123e4567-e89b-12d3-a456-426614174000',
     title: 'Test Product',
     description: 'Test Description',
     price: 99.99,
     status: ProductStatus.DRAFT,
     condition: ProductCondition.NEW,
-    seller: { id: '1' } as User,
+    seller: { id: '123e4567-e89b-12d3-a456-426614174001' } as User,
     category: {
-      id: '1',
+      id: '123e4567-e89b-12d3-a456-426614174002',
       name: 'Test Category',
       description: 'Test Description',
       products: [],
       createdAt: new Date(),
       updatedAt: new Date(),
     },
-    categoryId: '1',
+    categoryId: '123e4567-e89b-12d3-a456-426614174002',
     images: [],
     views: [],
     createdAt: new Date(),
@@ -45,7 +44,7 @@ describe('ProductsService', () => {
   };
 
   const mockCategory: Category = {
-    id: '1',
+    id: '123e4567-e89b-12d3-a456-426614174002',
     name: 'Test Category',
     description: 'Test Description',
     products: [],
@@ -75,6 +74,14 @@ describe('ProductsService', () => {
     findOne: jest.fn(),
     update: jest.fn(),
     delete: jest.fn(),
+    createQueryBuilder: jest.fn().mockReturnValue({
+      leftJoinAndSelect: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      orderBy: jest.fn().mockReturnThis(),
+      take: jest.fn().mockReturnThis(),
+      getMany: jest.fn(),
+    }),
   };
 
   beforeEach(async () => {
@@ -94,6 +101,7 @@ describe('ProductsService', () => {
           useValue: {
             uploadImages: jest.fn(),
             createProductImage: jest.fn(),
+            deleteImages: jest.fn().mockResolvedValue(undefined),
           },
         },
         {
@@ -136,6 +144,12 @@ describe('ProductsService', () => {
     productImagesService =
       module.get<ProductImagesService>(ProductImagesService);
     categoriesService = module.get<CategoriesService>(CategoriesService);
+    productFavoritesService = module.get<ProductFavoritesService>(
+      ProductFavoritesService,
+    );
+
+    // Reset all mocks
+    jest.clearAllMocks();
   });
 
   describe('create', () => {
@@ -209,26 +223,46 @@ describe('ProductsService', () => {
 
   describe('findOne', () => {
     it('devrait retourner un produit par son ID', async () => {
-      // Arrange
+      const mockProduct = {
+        id: '123e4567-e89b-12d3-a456-426614174000',
+        title: 'Test Product',
+        description: 'Test Description',
+        price: 99.99,
+        status: ProductStatus.DRAFT,
+        condition: ProductCondition.NEW,
+        seller: { id: '1' } as User,
+        category: {
+          id: '1',
+          name: 'Test Category',
+          description: 'Test Description',
+          products: [],
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+        categoryId: '1',
+        images: [],
+        views: [],
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+
       mockRepository.findOne.mockResolvedValue(mockProduct);
 
-      // Act
-      const result = await service.findOne('1');
+      const result = await service.findOne(mockProduct.id);
 
-      // Assert
       expect(result).toEqual(mockProduct);
-      expect(productRepository.findOne).toHaveBeenCalledWith({
-        where: { id: '1' },
+      expect(mockRepository.findOne).toHaveBeenCalledWith({
+        where: { id: mockProduct.id },
         relations: ['category', 'images', 'seller'],
       });
     });
 
     it("devrait lever une exception si le produit n'existe pas", async () => {
-      // Arrange
       mockRepository.findOne.mockResolvedValue(null);
 
-      // Act & Assert
-      await expect(service.findOne('999')).rejects.toThrow(NotFoundException);
+      await expect(
+        service.findOne('123e4567-e89b-12d3-a456-426614174999'),
+      ).rejects.toThrow(NotFoundException);
     });
   });
 
@@ -281,5 +315,163 @@ describe('ProductsService', () => {
       productId,
     );
     expect(result).toEqual(mockProductImage);
+  });
+
+  describe('getProductDetails', () => {
+    it('devrait retourner les détails du produit avec le statut favori', async () => {
+      const productWithViewCount = {
+        ...mockProduct,
+        viewCount: 0,
+      };
+
+      mockRepository.findOne.mockResolvedValue(productWithViewCount);
+      mockRepository.save.mockResolvedValue({
+        ...productWithViewCount,
+        viewCount: 1,
+      });
+      jest.spyOn(productFavoritesService, 'isFavorite').mockResolvedValue(true);
+
+      const result = await service.getProductDetails(
+        productWithViewCount.id,
+        '1',
+      );
+
+      expect(result).toBeDefined();
+      expect(result.isFavorite).toBe(true);
+      expect(result.viewCount).toBe(1);
+      expect(mockRepository.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          viewCount: 1,
+        }),
+      );
+    });
+
+    it("devrait lever une exception si le produit n'existe pas", async () => {
+      mockRepository.findOne.mockResolvedValue(null);
+
+      await expect(
+        service.getProductDetails('non-existent-id'),
+      ).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('findSimilarProducts', () => {
+    it('devrait retourner des produits similaires', async () => {
+      const mockSimilarProducts = [
+        { ...mockProduct, id: '123e4567-e89b-12d3-a456-426614174003' },
+        { ...mockProduct, id: '123e4567-e89b-12d3-a456-426614174004' },
+      ];
+
+      // Mock findOne pour éviter l'erreur NotFoundException
+      mockRepository.findOne.mockResolvedValueOnce({
+        ...mockProduct,
+        id: '123e4567-e89b-12d3-a456-426614174000',
+        categoryId: '123e4567-e89b-12d3-a456-426614174002',
+      });
+
+      mockRepository.createQueryBuilder.mockReturnValue({
+        leftJoinAndSelect: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        take: jest.fn().mockReturnThis(),
+        getMany: jest.fn().mockResolvedValue(mockSimilarProducts),
+      });
+
+      const result = await service.findSimilarProducts(mockProduct.id, 2);
+
+      expect(result).toHaveLength(2);
+      expect(result[0].id).toBe('123e4567-e89b-12d3-a456-426614174003');
+      expect(result[1].id).toBe('123e4567-e89b-12d3-a456-426614174004');
+    });
+  });
+
+  describe('update', () => {
+    const updateDto = {
+      title: 'Updated Title',
+      price: 199.99,
+    };
+
+    it('devrait mettre à jour le produit avec succès', async () => {
+      const updatedProduct = {
+        ...mockProduct,
+        ...updateDto,
+      };
+
+      // Mock findOne pour le produit existant
+      mockRepository.findOne.mockResolvedValueOnce({
+        ...mockProduct,
+        seller: { id: '123e4567-e89b-12d3-a456-426614174001' },
+      });
+      mockRepository.save.mockResolvedValue(updatedProduct);
+
+      const result = await service.update(
+        mockProduct.id,
+        updateDto,
+        [],
+        '123e4567-e89b-12d3-a456-426614174001',
+      );
+
+      expect(result.title).toBe(updateDto.title);
+      expect(result.price).toBe(updateDto.price);
+    });
+
+    it("devrait lever une exception si l'utilisateur n'est pas autorisé", async () => {
+      // Mock findOne pour le produit existant avec un vendeur différent
+      mockRepository.findOne.mockResolvedValueOnce({
+        ...mockProduct,
+        seller: { id: '123e4567-e89b-12d3-a456-426614174001' },
+      });
+
+      await expect(
+        service.update(
+          mockProduct.id,
+          updateDto,
+          [],
+          '123e4567-e89b-12d3-a456-426614174999',
+        ),
+      ).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('devrait mettre à jour les images si fournies', async () => {
+      const newImages = [
+        {
+          fieldname: 'images',
+          originalname: 'new.jpg',
+          encoding: '7bit',
+          mimetype: 'image/jpeg',
+          buffer: Buffer.from('test'),
+          size: 1024,
+          stream: null,
+          destination: '',
+          filename: 'new.jpg',
+          path: '',
+        },
+      ];
+
+      // Mock findOne pour le produit existant
+      mockRepository.findOne.mockResolvedValueOnce({
+        ...mockProduct,
+        seller: { id: '123e4567-e89b-12d3-a456-426614174001' },
+        images: [{ url: 'old-image.jpg' }],
+      });
+
+      mockRepository.save.mockResolvedValue({
+        ...mockProduct,
+        images: [{ url: 'new-image-url.jpg' }],
+      });
+
+      const result = await service.update(
+        mockProduct.id,
+        updateDto,
+        newImages,
+        '123e4567-e89b-12d3-a456-426614174001',
+      );
+
+      expect(productImagesService.uploadImages).toHaveBeenCalled();
+      expect(productImagesService.deleteImages).toHaveBeenCalled();
+      expect(result.images).toHaveLength(1);
+      expect(result.images[0].url).toBe('new-image-url.jpg');
+    });
   });
 });

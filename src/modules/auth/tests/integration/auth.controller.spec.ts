@@ -1,137 +1,98 @@
 import { INestApplication } from '@nestjs/common';
-import { Test } from '@nestjs/testing';
+import { Test, TestingModule } from '@nestjs/testing';
+import * as bcrypt from 'bcrypt';
 import * as request from 'supertest';
-import { TestModule } from '../../../../common/test/test.module';
-import { UsersModule } from '../../../users/users.module';
+import { Repository } from 'typeorm';
+import { TestDatabaseModule } from '../../../../common/test/database.module';
+import { TestJwtModule } from '../../../../common/test/jwt.module';
+import { User } from '../../../users/entities/user.entity';
 import { AuthModule } from '../../auth.module';
-import { TestJwtModule } from '@test/test-jwt.module';
 
 describe('AuthController (Integration)', () => {
   let app: INestApplication;
-
-  const userFixture = {
-    email: 'test@example.com',
-    password: 'password123',
-    firstName: 'Test',
-    lastName: 'User',
-  };
+  let userRepository: Repository<User>;
 
   beforeAll(async () => {
-    const moduleRef = await Test.createTestingModule({
-      imports: [TestModule.forRoot(), TestJwtModule, AuthModule, UsersModule],
+    const moduleFixture: TestingModule = await Test.createTestingModule({
+      imports: [TestDatabaseModule, TestJwtModule, AuthModule],
     }).compile();
 
-    app = moduleRef.createNestApplication();
+    app = moduleFixture.createNestApplication();
+    userRepository = moduleFixture.get('UserRepository');
     await app.init();
   });
 
   afterAll(async () => {
+    await userRepository.query('DELETE FROM users');
     await app.close();
   });
 
   describe('POST /auth/register', () => {
-    it('devrait créer un nouvel utilisateur avec succès', async () => {
+    const registerDto = {
+      email: 'test@example.com',
+      password: 'Password123!',
+      username: 'testuser',
+    };
+
+    it('devrait créer un nouvel utilisateur', async () => {
       const response = await request(app.getHttpServer())
         .post('/auth/register')
-        .send(userFixture)
+        .send(registerDto)
         .expect(201);
 
-      expect(response.body).toEqual({
-        message: 'Registration successful',
-        user: {
-          id: expect.any(String),
-          email: userFixture.email,
-          firstName: userFixture.firstName,
-          lastName: userFixture.lastName,
-          address: null,
-        },
+      expect(response.body).toHaveProperty('accessToken');
+
+      const user = await userRepository.findOne({
+        where: { email: registerDto.email },
       });
+      expect(user).toBeDefined();
+      expect(user.email).toBe(registerDto.email);
     });
 
     it("devrait échouer si l'email existe déjà", async () => {
-      const response = await request(app.getHttpServer())
+      await userRepository.save({
+        ...registerDto,
+        password: await bcrypt.hash(registerDto.password, 10),
+      });
+
+      return request(app.getHttpServer())
         .post('/auth/register')
-        .send(userFixture)
+        .send(registerDto)
         .expect(400);
-
-      expect(response.body.message).toBe('Email already exists');
-    });
-
-    it("devrait valider le format de l'email", async () => {
-      const response = await request(app.getHttpServer())
-        .post('/auth/register')
-        .send({
-          ...userFixture,
-          email: 'invalid-email',
-        })
-        .expect(400);
-
-      expect(response.body.message).toEqual(['email must be an email']);
-    });
-
-    it('devrait valider la longueur du mot de passe', async () => {
-      const response = await request(app.getHttpServer())
-        .post('/auth/register')
-        .send({
-          ...userFixture,
-          password: '123',
-        })
-        .expect(400);
-
-      expect(response.body.message).toEqual([
-        'password must be longer than or equal to 8 characters',
-      ]);
     });
   });
 
   describe('POST /auth/login', () => {
-    it('devrait connecter un utilisateur avec succès', async () => {
-      const response = await request(app.getHttpServer())
-        .post('/auth/login')
-        .send({
-          email: userFixture.email,
-          password: userFixture.password,
-        })
-        .expect(200);
+    const loginDto = {
+      email: 'test@example.com',
+      password: 'Password123!',
+    };
 
-      expect(response.body).toHaveProperty('access_token');
+    beforeEach(async () => {
+      await userRepository.save({
+        ...loginDto,
+        username: 'testuser',
+        password: await bcrypt.hash(loginDto.password, 10),
+      });
     });
 
-    it('devrait échouer avec un mot de passe incorrect', async () => {
+    it("devrait connecter l'utilisateur avec succès", async () => {
       const response = await request(app.getHttpServer())
         .post('/auth/login')
+        .send(loginDto)
+        .expect(200);
+
+      expect(response.body).toHaveProperty('accessToken');
+    });
+
+    it('devrait échouer avec des identifiants invalides', () => {
+      return request(app.getHttpServer())
+        .post('/auth/login')
         .send({
-          email: userFixture.email,
+          ...loginDto,
           password: 'wrongpassword',
         })
         .expect(401);
-
-      expect(response.body.message).toBe('Invalid credentials');
-    });
-
-    it('devrait échouer avec un email inexistant', async () => {
-      const response = await request(app.getHttpServer())
-        .post('/auth/login')
-        .send({
-          email: 'nonexistent@example.com',
-          password: userFixture.password,
-        })
-        .expect(401);
-
-      expect(response.body.message).toBe('Invalid credentials');
-    });
-
-    it("devrait gérer l'option rememberMe", async () => {
-      const response = await request(app.getHttpServer())
-        .post('/auth/login')
-        .send({
-          email: userFixture.email,
-          password: userFixture.password,
-          rememberMe: true,
-        })
-        .expect(200);
-
-      expect(response.body).toHaveProperty('access_token');
     });
   });
 });

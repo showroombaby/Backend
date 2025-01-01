@@ -1,9 +1,9 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { Category } from '../../products/entities/category.entity';
 import { CreateCategoryDto } from '../dto/create-category.dto';
 import { UpdateCategoryDto } from '../dto/update-category.dto';
+import { Category } from '../entities/category.entity';
 
 @Injectable()
 export class CategoriesService {
@@ -38,6 +38,14 @@ export class CategoriesService {
 
   async findOne(id: string): Promise<Category> {
     try {
+      if (
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+          id,
+        )
+      ) {
+        throw new NotFoundException('Category not found');
+      }
+
       const category = await this.categoryRepository.findOne({
         where: { id },
       });
@@ -52,7 +60,10 @@ export class CategoriesService {
         'Erreur lors de la récupération de la catégorie:',
         error,
       );
-      throw error;
+      if (error instanceof NotFoundException) {
+        throw error;
+      }
+      throw new NotFoundException('Category not found');
     }
   }
 
