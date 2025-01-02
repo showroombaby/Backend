@@ -16,7 +16,6 @@ import { Product } from '../../products/entities/product.entity';
 import { SavedFilter } from '../../products/entities/saved-filter.entity';
 import { Role } from '../enums/role.enum';
 import { Address } from '../interfaces/address.interface';
-import { ProductFavorite } from '../../products/entities/product-favorite.entity';
 
 @Entity('users')
 export class User {
@@ -79,9 +78,6 @@ export class User {
 
   @OneToMany(() => SavedFilter, (filter) => filter.user)
   savedFilters: SavedFilter[];
-
-  @OneToMany(() => ProductFavorite, favorite => favorite.user)
-  favorites: ProductFavorite[];
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
