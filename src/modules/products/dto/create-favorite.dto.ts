@@ -8,4 +8,5 @@ export class CreateFavoriteDto {
   })
   @IsUUID()
   productId: string;
-} 
+}
+
