@@ -13,6 +13,7 @@ import { User } from '../../users/entities/user.entity';
 import { ProductCondition } from '../enums/product-condition.enum';
 import { ProductImage } from './product-image.entity';
 import { ProductView } from './product-view.entity';
+import { ProductFavorite } from './product-favorite.entity';
 
 export enum ProductStatus {
   DRAFT = 'draft',
@@ -96,4 +97,7 @@ export class Product {
 
   @UpdateDateColumn({ name: 'updated_at' })
   updatedAt: Date;
+
+  @OneToMany(() => ProductFavorite, favorite => favorite.product)
+  favorites: ProductFavorite[];
 }
