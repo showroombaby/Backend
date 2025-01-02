@@ -11,11 +11,13 @@ import { ProductImage } from './entities/product-image.entity';
 import { ProductView } from './entities/product-view.entity';
 import { Product } from './entities/product.entity';
 import { SavedFilter } from './entities/saved-filter.entity';
+import { Report } from './entities/report.entity';
 import { ProductFavoritesService } from './services/product-favorites.service';
 import { ProductImagesService } from './services/product-images.service';
 import { ProductViewsService } from './services/product-views.service';
 import { ProductsService } from './services/products.service';
 import { SavedFiltersService } from './services/saved-filters.service';
+import { ReportsService } from './services/reports.service';
 
 @Module({
   imports: [
@@ -26,6 +28,7 @@ import { SavedFiltersService } from './services/saved-filters.service';
       ProductFavorite,
       Category,
       SavedFilter,
+      Report,
     ]),
     CategoriesModule,
     StorageModule,
@@ -41,12 +44,14 @@ import { SavedFiltersService } from './services/saved-filters.service';
     ProductViewsService,
     SavedFiltersService,
     ProductFavoritesService,
+    ReportsService,
   ],
   exports: [
     ProductsService,
     ProductViewsService,
     SavedFiltersService,
     ProductFavoritesService,
+    ReportsService,
   ],
 })
 export class ProductsModule {}
