@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { History, ActionType } from '../entities/history.entity';
@@ -38,49 +38,41 @@ export class HistoryService {
     offset?: number;
   }): Promise<{ items: History[]; total: number }> {
     try {
-      const {
-        userId,
-        entityType,
-        actionType,
-        startDate,
-        endDate,
-        limit = 10,
-        offset = 0,
-      } = options;
-
-      const queryBuilder = this.historyRepository
-        .createQueryBuilder('history')
+      const query = this.historyRepository.createQueryBuilder('history')
         .leftJoinAndSelect('history.user', 'user');
 
-      if (userId) {
-        queryBuilder.andWhere('history.userId = :userId', { userId });
+      if (options.userId) {
+        query.andWhere('history.userId = :userId', { userId: options.userId });
       }
 
-      if (entityType) {
-        queryBuilder.andWhere('history.entityType = :entityType', { entityType });
+      if (options.entityType) {
+        query.andWhere('history.entityType = :entityType', { entityType: options.entityType });
       }
 
-      if (actionType) {
-        queryBuilder.andWhere('history.actionType = :actionType', { actionType });
+      if (options.actionType) {
+        query.andWhere('history.actionType = :actionType', { actionType: options.actionType });
       }
 
-      if (startDate) {
-        queryBuilder.andWhere('history.createdAt >= :startDate', { startDate });
+      if (options.startDate) {
+        query.andWhere('history.createdAt >= :startDate', { startDate: options.startDate });
       }
 
-      if (endDate) {
-        queryBuilder.andWhere('history.createdAt <= :endDate', { endDate });
+      if (options.endDate) {
+        query.andWhere('history.createdAt <= :endDate', { endDate: options.endDate });
       }
 
-      const [items, total] = await queryBuilder
-        .orderBy('history.createdAt', 'DESC')
-        .take(limit)
-        .skip(offset)
-        .getManyAndCount();
+      query.orderBy('history.createdAt', 'DESC')
+        .skip(options.offset || 0)
+        .take(options.limit || 10);
 
-      return { items, total };
+      const [items, total] = await query.getManyAndCount();
+
+      return {
+        items,
+        total,
+      };
     } catch (error) {
-      this.logger.error(`Error finding history entries: ${error.message}`, error.stack);
+      this.logger.error('Error finding history entries:', error.message);
       throw error;
     }
   }
@@ -93,13 +85,16 @@ export class HistoryService {
       });
 
       if (!history) {
-        throw new Error(`History entry with ID ${id} not found`);
+        throw new NotFoundException(`History entry with ID ${id} not found`);
       }
 
       return history;
     } catch (error) {
-      this.logger.error(`Error finding history entry: ${error.message}`, error.stack);
-      throw error;
+      this.logger.error('Error finding history entry:', error.message);
+      if (error instanceof NotFoundException) {
+        throw error;
+      }
+      throw new Error(`Error finding history entry: ${error.message}`);
     }
   }
 
@@ -117,12 +112,17 @@ export class HistoryService {
   async findByEntity(entityId: string, entityType: string): Promise<History[]> {
     try {
       return await this.historyRepository.find({
-        where: { entityId, entityType },
+        where: {
+          entityId,
+          entityType,
+        },
         relations: ['user'],
-        order: { createdAt: 'DESC' },
+        order: {
+          createdAt: 'DESC',
+        },
       });
     } catch (error) {
-      this.logger.error(`Error finding history entries by entity: ${error.message}`, error.stack);
+      this.logger.error('Error finding entity history:', error.message);
       throw error;
     }
   }
