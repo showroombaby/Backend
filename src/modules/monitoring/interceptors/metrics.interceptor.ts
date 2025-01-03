@@ -13,44 +13,43 @@ export class MetricsInterceptor implements NestInterceptor {
   constructor(private readonly monitoringService: MonitoringService) {}
 
   intercept(context: ExecutionContext, next: CallHandler): Observable<any> {
+    const startTime = Date.now();
     const request = context.switchToHttp().getRequest();
     const { method, url } = request;
-    const startTime = Date.now();
 
     return next.handle().pipe(
       tap({
         next: () => {
           const duration = Date.now() - startTime;
-          const response = context.switchToHttp().getResponse();
-          const statusCode = response.statusCode;
+          const statusCode = context.switchToHttp().getResponse().statusCode;
 
-          // Enregistrer les métriques HTTP
-          this.monitoringService.recordHttpRequest(
+          this.monitoringService.recordHttpRequest({
             method,
             url,
+            duration,
             statusCode,
-            duration / 1000, // Convertir en secondes
-          );
+            timestamp: new Date(),
+          });
 
-          // Logger la requête
-          this.monitoringService.logInfo(
-            `${method} ${url} ${statusCode} ${duration}ms`,
-            'HTTP',
-          );
+          this.monitoringService.logInfo('Requête HTTP traitée', {
+            method,
+            url,
+            duration,
+            statusCode,
+          });
         },
         error: (error) => {
           const duration = Date.now() - startTime;
           const statusCode = error.status || 500;
 
-          // Enregistrer les métriques d'erreur
-          this.monitoringService.recordHttpRequest(
+          this.monitoringService.recordHttpRequest({
             method,
             url,
+            duration,
             statusCode,
-            duration / 1000,
-          );
+            timestamp: new Date(),
+          });
 
-          // Logger l'erreur
           this.monitoringService.logError(error, 'HTTP');
         },
       }),

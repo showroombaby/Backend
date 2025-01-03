@@ -1,13 +1,13 @@
-import { CacheModule } from '@nestjs/cache-manager';
 import { Module } from '@nestjs/common';
-import { ProductsModule } from '../products/products.module';
-import { UsersModule } from '../users/users.module';
+import { TypeOrmModule } from '@nestjs/typeorm';
 import { OfflineController } from './controllers/offline.controller';
-import { OfflineService } from './services/offline.service';
+import { SyncQueue } from './entities/sync-queue.entity';
+import { SyncService } from './services/sync.service';
 
 @Module({
-  imports: [CacheModule, ProductsModule, UsersModule],
+  imports: [TypeOrmModule.forFeature([SyncQueue])],
   controllers: [OfflineController],
-  providers: [OfflineService],
+  providers: [SyncService],
+  exports: [SyncService],
 })
 export class OfflineModule {}

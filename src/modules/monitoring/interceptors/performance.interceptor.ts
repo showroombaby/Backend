@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { Observable } from 'rxjs';
 import { tap } from 'rxjs/operators';
-import { MonitoringService } from '../../modules/monitoring/services/monitoring.service';
+import { MonitoringService } from '../services/monitoring.service';
 
 @Injectable()
 export class PerformanceInterceptor implements NestInterceptor {
@@ -23,7 +23,7 @@ export class PerformanceInterceptor implements NestInterceptor {
           const duration = Date.now() - startTime;
           const statusCode = context.switchToHttp().getResponse().statusCode;
 
-          this.monitoringService.recordHttpRequest({
+          this.monitoringService.logHttpRequest({
             method,
             url,
             duration,
@@ -31,7 +31,6 @@ export class PerformanceInterceptor implements NestInterceptor {
             timestamp: new Date(),
           });
 
-          // Log un avertissement si la requête est lente
           if (duration > 1000) {
             this.monitoringService.logWarning(
               'Requête lente détectée',
@@ -44,7 +43,7 @@ export class PerformanceInterceptor implements NestInterceptor {
           const duration = Date.now() - startTime;
           const statusCode = error.status || 500;
 
-          this.monitoringService.recordHttpRequest({
+          this.monitoringService.logHttpRequest({
             method,
             url,
             duration,

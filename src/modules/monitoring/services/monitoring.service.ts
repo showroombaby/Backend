@@ -1,79 +1,137 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { InjectMetric } from '@willsoto/nestjs-prometheus';
-import { WINSTON_MODULE_PROVIDER } from 'nest-winston';
-import { Counter, Gauge, Histogram } from 'prom-client';
+import { Counter, Histogram } from 'prom-client';
+import { Logger } from 'winston';
+
+interface DatabaseQueryMetrics {
+  path: string;
+  method: string;
+  queryCount: number;
+  duration: number;
+  timestamp: Date;
+}
+
+interface PerformanceIssue {
+  type: string;
+  path: string;
+  method: string;
+  queryCount: number;
+  duration: number;
+  timestamp: Date;
+}
+
+interface HttpMetrics {
+  method: string;
+  url: string;
+  duration: number;
+  statusCode: number;
+  timestamp: Date;
+}
 
 @Injectable()
 export class MonitoringService {
-  private readonly logger = new Logger(MonitoringService.name);
-
   constructor(
+    @InjectMetric('database_queries_total')
+    private databaseQueriesCounter: Counter<string>,
+    @InjectMetric('database_query_duration_seconds')
+    private databaseQueryDuration: Histogram<string>,
     @InjectMetric('http_request_duration_seconds')
-    private readonly httpRequestDuration: Histogram,
+    private httpRequestDuration: Histogram<string>,
     @InjectMetric('http_requests_total')
-    private readonly httpRequestsTotal: Counter,
-    @InjectMetric('active_users_gauge')
-    private readonly activeUsersGauge: Gauge,
-    @Inject(WINSTON_MODULE_PROVIDER)
-    private readonly winstonLogger: Logger,
+    private httpRequestsCounter: Counter<string>,
+    private readonly logger: Logger,
   ) {}
 
-  // Métriques HTTP
-  recordHttpRequest(
-    method: string,
-    route: string,
-    statusCode: number,
-    duration: number,
-  ) {
-    this.httpRequestDuration
-      .labels(method, route, statusCode.toString())
-      .observe(duration);
-    this.httpRequestsTotal.labels(method, route, statusCode.toString()).inc();
+  recordHttpRequest(metrics: HttpMetrics): void {
+    this.httpRequestsCounter.inc({
+      method: metrics.method,
+      status: metrics.statusCode.toString(),
+    });
+
+    this.httpRequestDuration.observe(
+      {
+        method: metrics.method,
+        path: metrics.url,
+      },
+      metrics.duration / 1000,
+    );
+
+    this.logInfo('HTTP Request', metrics);
   }
 
-  // Métriques utilisateurs
-  updateActiveUsers(count: number) {
-    this.activeUsersGauge.set(count);
+  logHttpRequest(metrics: HttpMetrics): void {
+    this.logger.info('HTTP Request', { ...metrics, context: 'HTTP' });
   }
 
-  // Logging
-  logError(error: Error, context?: string) {
-    this.winstonLogger.error(error.message, {
+  logDatabaseQuery(
+    metrics: DatabaseQueryMetrics,
+    context: string = 'Database',
+  ): void {
+    this.databaseQueriesCounter.inc({
+      path: metrics.path,
+      method: metrics.method,
+    });
+
+    this.databaseQueryDuration.observe(
+      {
+        path: metrics.path,
+        method: metrics.method,
+      },
+      metrics.duration / 1000,
+    );
+
+    this.logger.info(`[${context}] Database Query Metrics`, {
+      ...metrics,
+      context,
+    });
+  }
+
+  logPerformanceIssue(issue: PerformanceIssue): void {
+    this.logger.warn(`[Performance] ${issue.type} detected`, {
+      ...issue,
+      context: 'Performance',
+    });
+  }
+
+  logError(error: Error, context?: string): void {
+    this.logger.error(error.message, {
+      error,
+      context: context || 'Application',
       stack: error.stack,
-      context,
-      timestamp: new Date().toISOString(),
+      timestamp: new Date(),
     });
   }
 
-  logInfo(message: string, context?: string) {
-    this.winstonLogger.log({
-      level: 'info',
-      message,
-      context,
-      timestamp: new Date().toISOString(),
+  logWarning(message: string, context?: string, data?: any): void {
+    this.logger.warn(message, {
+      ...data,
+      context: context || 'Application',
+      timestamp: new Date(),
     });
   }
 
-  logWarning(message: string, context?: string) {
-    this.winstonLogger.warn(message, {
-      context,
-      timestamp: new Date().toISOString(),
+  logInfo(message: string, data?: any): void {
+    this.logger.info(message, {
+      ...data,
+      timestamp: new Date(),
     });
   }
 
-  logDebug(message: string, context?: string) {
-    this.winstonLogger.debug(message, {
-      context,
-      timestamp: new Date().toISOString(),
-    });
+  async checkHealth() {
+    const metrics = await this.getMetrics();
+    return {
+      status: 'ok',
+      timestamp: new Date(),
+      metrics,
+    };
   }
 
-  // Métriques personnalisées
-  recordDatabaseQuery(operation: string, duration: number) {
-    this.httpRequestDuration.labels('database', operation).observe(duration);
-  }
-
-  recordWebSocketEvent(event: string) {
-    this.httpRequestsTotal.labels('websocket', event).inc();
+  async getMetrics() {
+    return {
+      httpRequests: await this.httpRequestsCounter.get(),
+      httpLatency: await this.httpRequestDuration.get(),
+      databaseQueries: await this.databaseQueriesCounter.get(),
+      databaseLatency: await this.databaseQueryDuration.get(),
+    };
   }
 }

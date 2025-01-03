@@ -1,33 +1,87 @@
-import { Controller, Get, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Post,
+  Query,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { GetUser } from '../../auth/decorators/get-user.decorator';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
-import { User } from '../../users/entities/user.entity';
-import { OfflineService } from '../services/offline.service';
+import { QueueOperationDto } from '../dto/queue-operation.dto';
+import { SyncService } from '../services/sync.service';
 
 @ApiTags('offline')
-@Controller('offline')
 @UseGuards(JwtAuthGuard)
+@Controller('offline')
 export class OfflineController {
-  constructor(private readonly offlineService: OfflineService) {}
+  constructor(private readonly syncService: SyncService) {}
 
-  @Get('sync')
-  @ApiOperation({ summary: 'Synchroniser les données pour le mode hors-ligne' })
-  @ApiResponse({
-    status: 200,
-    description: 'Données synchronisées avec succès',
+  @Post('sync')
+  @ApiOperation({
+    summary: 'Ajouter une opération à la file de synchronisation',
   })
-  async syncOfflineData(@GetUser() user: User) {
-    return this.offlineService.getOfflineData(user.id);
+  @ApiResponse({
+    status: 201,
+    description: "L'opération a été ajoutée à la file de synchronisation",
+  })
+  async queueOperation(@Body() operationDto: QueueOperationDto, @Req() req) {
+    return await this.syncService.queueOperation(
+      req.user.id,
+      operationDto.entityType,
+      operationDto.entityId,
+      operationDto.operation,
+      operationDto.data,
+    );
   }
 
-  @Get('clear')
-  @ApiOperation({ summary: 'Effacer les données hors-ligne' })
+  @Post('sync/process')
+  @ApiOperation({ summary: 'Traiter la file de synchronisation' })
   @ApiResponse({
     status: 200,
-    description: 'Données hors-ligne effacées avec succès',
+    description: 'La file de synchronisation a été traitée',
   })
-  async clearOfflineData(@GetUser() user: User) {
-    return this.offlineService.clearOfflineData(user.id);
+  async processSyncQueue(@Req() req) {
+    await this.syncService.processSyncQueue(req.user.id);
+    return { message: 'File de synchronisation traitée' };
+  }
+
+  @Get('sync/failed')
+  @ApiOperation({ summary: 'Obtenir les opérations échouées' })
+  @ApiResponse({
+    status: 200,
+    description: 'Liste des opérations échouées',
+  })
+  async getFailedOperations(@Req() req) {
+    return await this.syncService.getFailedOperations(req.user.id);
+  }
+
+  @Post('sync/retry')
+  @ApiOperation({ summary: 'Réessayer les opérations échouées' })
+  @ApiResponse({
+    status: 200,
+    description: 'Les opérations échouées ont été réessayées',
+  })
+  async retryFailedOperations(@Req() req) {
+    await this.syncService.retryFailedOperations(req.user.id);
+    return { message: 'Opérations échouées réessayées' };
+  }
+
+  @Post('sync/clear')
+  @ApiOperation({ summary: 'Nettoyer les opérations terminées' })
+  @ApiResponse({
+    status: 200,
+    description: 'Les opérations terminées ont été nettoyées',
+  })
+  async clearCompletedOperations(
+    @Req() req,
+    @Query('olderThan') olderThan?: string,
+  ) {
+    await this.syncService.clearCompletedOperations(
+      req.user.id,
+      olderThan ? new Date(olderThan) : undefined,
+    );
+    return { message: 'Opérations terminées nettoyées' };
   }
 }
