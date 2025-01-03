@@ -13,6 +13,12 @@ import { WsUser } from '../../auth/decorators/ws-user.decorator';
 import { WsJwtGuard } from '../../auth/guards/ws-jwt.guard';
 import { User } from '../../users/entities/user.entity';
 import { CreateMessageDto } from '../dto/create-message.dto';
+import {
+  ApiMarkAsRead,
+  ApiSendMessage,
+  ApiTypingIndicator,
+  ApiWebSocketConnection,
+} from '../messaging.gateway.swagger';
 import { MessagingService } from '../services/messaging.service';
 
 interface NotificationPayload {
@@ -27,6 +33,7 @@ interface NotificationPayload {
   },
   namespace: 'messaging',
 })
+@UseGuards(WsJwtGuard)
 export class MessagingGateway
   implements OnGatewayConnection, OnGatewayDisconnect
 {
@@ -38,6 +45,7 @@ export class MessagingGateway
 
   constructor(private readonly messagingService: MessagingService) {}
 
+  @ApiWebSocketConnection()
   async handleConnection(client: Socket) {
     try {
       // La validation du token est gérée par le guard
@@ -71,12 +79,12 @@ export class MessagingGateway
     }
   }
 
-  @UseGuards(WsJwtGuard)
-  @SubscribeMessage('sendMessage')
+  @SubscribeMessage('message')
+  @ApiSendMessage()
   async handleMessage(
-    @ConnectedSocket() client: Socket,
     @MessageBody() createMessageDto: CreateMessageDto,
     @WsUser() user: User,
+    @ConnectedSocket() client: Socket,
   ) {
     try {
       const message = await this.messagingService.createMessage(
@@ -109,12 +117,12 @@ export class MessagingGateway
     }
   }
 
-  @UseGuards(WsJwtGuard)
-  @SubscribeMessage('markAsRead')
-  async handleMarkAsRead(
-    @ConnectedSocket() client: Socket,
+  @SubscribeMessage('read')
+  @ApiMarkAsRead()
+  async handleReadMessage(
     @MessageBody() data: { messageId: string },
     @WsUser() user: User,
+    @ConnectedSocket() client: Socket,
   ) {
     try {
       const message = await this.messagingService.markMessageAsRead(
@@ -143,10 +151,9 @@ export class MessagingGateway
     }
   }
 
-  @UseGuards(WsJwtGuard)
   @SubscribeMessage('typing')
+  @ApiTypingIndicator()
   async handleTyping(
-    @ConnectedSocket() client: Socket,
     @MessageBody() data: { recipientId: string; isTyping: boolean },
     @WsUser() user: User,
   ) {
@@ -158,12 +165,11 @@ export class MessagingGateway
     }
   }
 
-  @UseGuards(WsJwtGuard)
   @SubscribeMessage('archiveMessage')
   async handleArchiveMessage(
-    @ConnectedSocket() client: Socket,
     @MessageBody() data: { messageId: string },
     @WsUser() user: User,
+    @ConnectedSocket() client: Socket,
   ) {
     try {
       const message = await this.messagingService.archiveMessage(
@@ -200,12 +206,11 @@ export class MessagingGateway
     }
   }
 
-  @UseGuards(WsJwtGuard)
   @SubscribeMessage('unarchiveMessage')
   async handleUnarchiveMessage(
-    @ConnectedSocket() client: Socket,
     @MessageBody() data: { messageId: string },
     @WsUser() user: User,
+    @ConnectedSocket() client: Socket,
   ) {
     try {
       const message = await this.messagingService.unarchiveMessage(

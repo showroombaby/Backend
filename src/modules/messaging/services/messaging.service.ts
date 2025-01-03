@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Product } from '../../products/entities/product.entity';
@@ -6,30 +6,25 @@ import { User } from '../../users/entities/user.entity';
 import { CreateMessageDto } from '../dto/create-message.dto';
 import { PaginatedResponse, PaginationDto } from '../dto/pagination.dto';
 import { SearchMessagesDto } from '../dto/search-messages.dto';
-import { Message, MessageStatus } from '../entities/message.entity';
-import {
-  ConversationResult,
-  ConversationWithDetails,
-} from '../interfaces/conversation.interface';
+import { Message } from '../entities/message.entity';
+import { ConversationWithDetails } from '../interfaces/conversation.interface';
 
 @Injectable()
 export class MessagingService {
-  private readonly logger = new Logger(MessagingService.name);
-
   constructor(
     @InjectRepository(Message)
-    private readonly messageRepository: Repository<Message>,
+    private messageRepository: Repository<Message>,
     @InjectRepository(User)
-    private readonly userRepository: Repository<User>,
+    private userRepository: Repository<User>,
     @InjectRepository(Product)
-    private readonly productRepository: Repository<Product>,
+    private productRepository: Repository<Product>,
   ) {}
 
   async createMessage(
     senderId: string,
     createMessageDto: CreateMessageDto,
   ): Promise<Message> {
-    const { recipientId, productId, content } = createMessageDto;
+    const { recipientId, productId } = createMessageDto;
 
     const recipient = await this.userRepository.findOne({
       where: { id: recipientId },
@@ -48,14 +43,79 @@ export class MessagingService {
     }
 
     const message = this.messageRepository.create({
-      content,
-      senderId,
-      recipientId,
-      productId,
-      status: MessageStatus.SENT,
+      content: createMessageDto.content,
+      senderId: senderId,
+      recipientId: createMessageDto.recipientId,
+      productId: createMessageDto.productId,
+      read: false,
+      archivedBySender: false,
+      archivedByRecipient: false,
     });
 
     return await this.messageRepository.save(message);
+  }
+
+  async getConversations(userId: string): Promise<Message[]> {
+    return await this.messageRepository
+      .createQueryBuilder('message')
+      .where('(message.senderId = :userId OR message.recipientId = :userId)', {
+        userId,
+      })
+      .orderBy('message.createdAt', 'DESC')
+      .getMany();
+  }
+
+  async getUserConversations(
+    userId: string,
+    pagination: PaginationDto = { page: 1, limit: 10 },
+  ): Promise<PaginatedResponse<ConversationWithDetails>> {
+    const skip = (pagination.page - 1) * pagination.limit;
+
+    const [conversations, total] = await this.messageRepository
+      .createQueryBuilder('message')
+      .where(
+        '(message.senderId = :userId OR message.recipientId = :userId) AND NOT (message.archivedBySender = true AND message.senderId = :userId) AND NOT (message.archivedByRecipient = true AND message.recipientId = :userId)',
+        { userId },
+      )
+      .orderBy('message.createdAt', 'DESC')
+      .skip(skip)
+      .take(pagination.limit)
+      .getManyAndCount();
+
+    const conversationsWithDetails = await Promise.all(
+      conversations.map(async (message) => {
+        const otherUserId =
+          message.senderId === userId ? message.recipientId : message.senderId;
+        const otherUser = await this.userRepository.findOne({
+          where: { id: otherUserId },
+          select: ['id', 'firstName', 'lastName', 'email', 'avatar'],
+        });
+
+        const unreadCount = await this.messageRepository.count({
+          where: {
+            senderId: otherUserId,
+            recipientId: userId,
+            read: false,
+          },
+        });
+
+        return {
+          otherUser,
+          lastMessage: message,
+          unreadCount,
+          lastMessageDate: message.createdAt,
+        };
+      }),
+    );
+
+    return {
+      data: conversationsWithDetails,
+      meta: {
+        total,
+        page: pagination.page,
+        lastPage: Math.ceil(total / pagination.limit),
+      },
+    };
   }
 
   async getConversation(
@@ -65,97 +125,23 @@ export class MessagingService {
   ): Promise<PaginatedResponse<Message>> {
     const skip = (pagination.page - 1) * pagination.limit;
 
-    const [messages, total] = await this.messageRepository.findAndCount({
-      where: [
-        {
-          senderId: userId,
-          recipientId: otherUserId,
-          archivedBySender: false,
-        },
-        {
-          senderId: otherUserId,
-          recipientId: userId,
-          archivedByRecipient: false,
-        },
-      ],
-      order: { createdAt: 'DESC' },
-      relations: ['sender', 'recipient', 'product'],
-      skip,
-      take: pagination.limit,
-    });
-
-    const lastPage = Math.ceil(total / pagination.limit);
+    const [messages, total] = await this.messageRepository
+      .createQueryBuilder('message')
+      .where(
+        '(message.senderId = :userId AND message.recipientId = :otherUserId) OR (message.senderId = :otherUserId AND message.recipientId = :userId)',
+        { userId, otherUserId },
+      )
+      .orderBy('message.createdAt', 'ASC')
+      .skip(skip)
+      .take(pagination.limit)
+      .getManyAndCount();
 
     return {
       data: messages,
       meta: {
         total,
         page: pagination.page,
-        lastPage,
-      },
-    };
-  }
-
-  async getUserConversations(
-    userId: string,
-    pagination: PaginationDto = { page: 1, limit: 10 },
-  ): Promise<PaginatedResponse<ConversationWithDetails>> {
-    const skip = (pagination.page - 1) * pagination.limit;
-
-    const query = this.messageRepository
-      .createQueryBuilder('message')
-      .select([
-        'CASE WHEN message.sender_id = :userId THEN message.recipient_id ELSE message.sender_id END as otherUserId',
-        'MAX(message.created_at) as lastMessageDate',
-        'COUNT(CASE WHEN message.status = :unreadStatus AND message.recipient_id = :userId THEN 1 END) as unreadCount',
-      ])
-      .where(
-        '(message.sender_id = :userId AND message.archived_by_sender = false) OR (message.recipient_id = :userId AND message.archived_by_recipient = false)',
-        { userId },
-      )
-      .setParameter('unreadStatus', MessageStatus.SENT)
-      .groupBy('otherUserId')
-      .orderBy('lastMessageDate', 'DESC')
-      .offset(skip)
-      .limit(pagination.limit);
-
-    const [rawConversations, total] = await Promise.all([
-      query.getRawMany(),
-      query.getCount(),
-    ]);
-
-    const conversationsWithDetails = await Promise.all(
-      rawConversations.map(async (conv: ConversationResult) => {
-        const otherUser = await this.userRepository.findOne({
-          where: { id: conv.otherUserId },
-          select: ['id', 'firstName', 'lastName', 'email', 'avatar'],
-        });
-
-        const lastMessage = await this.messageRepository.findOne({
-          where: [
-            { senderId: userId, recipientId: conv.otherUserId },
-            { senderId: conv.otherUserId, recipientId: userId },
-          ],
-          order: { createdAt: 'DESC' },
-        });
-
-        return {
-          otherUser,
-          lastMessage,
-          unreadCount: parseInt(conv.unreadCount?.toString() || '0'),
-          lastMessageDate: conv.lastMessageDate,
-        };
-      }),
-    );
-
-    const lastPage = Math.ceil(total / pagination.limit);
-
-    return {
-      data: conversationsWithDetails,
-      meta: {
-        total,
-        page: pagination.page,
-        lastPage,
+        lastPage: Math.ceil(total / pagination.limit),
       },
     };
   }
@@ -169,7 +155,7 @@ export class MessagingService {
       throw new NotFoundException('Message non trouvé');
     }
 
-    message.status = MessageStatus.READ;
+    message.read = true;
     return await this.messageRepository.save(message);
   }
 
@@ -180,11 +166,14 @@ export class MessagingService {
     await this.messageRepository
       .createQueryBuilder()
       .update(Message)
-      .set({ status: MessageStatus.READ })
-      .where('recipient_id = :userId AND sender_id = :otherUserId', {
-        userId,
-        otherUserId,
-      })
+      .set({ read: true })
+      .where(
+        'recipientId = :userId AND senderId = :otherUserId AND read = false',
+        {
+          userId,
+          otherUserId,
+        },
+      )
       .execute();
   }
 
@@ -194,11 +183,10 @@ export class MessagingService {
     pagination: PaginationDto = { page: 1, limit: 10 },
   ): Promise<PaginatedResponse<Message>> {
     const skip = (pagination.page - 1) * pagination.limit;
-
     const queryBuilder = this.messageRepository.createQueryBuilder('message');
 
     queryBuilder.where(
-      '(message.sender_id = :userId AND message.archived_by_sender = false) OR (message.recipient_id = :userId AND message.archived_by_recipient = false)',
+      '(message.senderId = :userId OR message.recipientId = :userId)',
       { userId },
     );
 
@@ -209,37 +197,45 @@ export class MessagingService {
     }
 
     if (searchDto.productId) {
-      queryBuilder.andWhere('message.product_id = :productId', {
+      queryBuilder.andWhere('message.productId = :productId', {
         productId: searchDto.productId,
       });
     }
 
-    if (searchDto.userId) {
-      queryBuilder.andWhere(
-        '(message.sender_id = :otherUserId OR message.recipient_id = :otherUserId)',
-        { otherUserId: searchDto.userId },
-      );
-    }
-
-    queryBuilder
-      .leftJoinAndSelect('message.sender', 'sender')
-      .leftJoinAndSelect('message.recipient', 'recipient')
-      .leftJoinAndSelect('message.product', 'product')
+    const [messages, total] = await queryBuilder
       .orderBy('message.createdAt', 'DESC')
       .skip(skip)
-      .take(pagination.limit);
-
-    const [messages, total] = await queryBuilder.getManyAndCount();
-    const lastPage = Math.ceil(total / pagination.limit);
+      .take(pagination.limit)
+      .getManyAndCount();
 
     return {
       data: messages,
       meta: {
         total,
         page: pagination.page,
-        lastPage,
+        lastPage: Math.ceil(total / pagination.limit),
       },
     };
+  }
+
+  async archiveMessage(messageId: string, userId: string): Promise<Message> {
+    const message = await this.messageRepository.findOne({
+      where: { id: messageId },
+    });
+
+    if (!message) {
+      throw new NotFoundException('Message non trouvé');
+    }
+
+    if (message.senderId === userId) {
+      message.archivedBySender = true;
+    } else if (message.recipientId === userId) {
+      message.archivedByRecipient = true;
+    } else {
+      throw new NotFoundException('Message non trouvé');
+    }
+
+    return await this.messageRepository.save(message);
   }
 
   async archiveConversation(
@@ -251,15 +247,35 @@ export class MessagingService {
       .update(Message)
       .set({
         archivedBySender: () =>
-          'CASE WHEN sender_id = :userId THEN true ELSE archived_by_sender END',
+          'CASE WHEN "senderId" = :userId THEN true ELSE "archivedBySender" END',
         archivedByRecipient: () =>
-          'CASE WHEN recipient_id = :userId THEN true ELSE archived_by_recipient END',
+          'CASE WHEN "recipientId" = :userId THEN true ELSE "archivedByRecipient" END',
       })
       .where(
-        '(sender_id = :userId AND recipient_id = :otherUserId) OR (sender_id = :otherUserId AND recipient_id = :userId)',
+        '("senderId" = :userId AND "recipientId" = :otherUserId) OR ("senderId" = :otherUserId AND "recipientId" = :userId)',
         { userId, otherUserId },
       )
       .execute();
+  }
+
+  async unarchiveMessage(messageId: string, userId: string): Promise<Message> {
+    const message = await this.messageRepository.findOne({
+      where: { id: messageId },
+    });
+
+    if (!message) {
+      throw new NotFoundException('Message non trouvé');
+    }
+
+    if (message.senderId === userId) {
+      message.archivedBySender = false;
+    } else if (message.recipientId === userId) {
+      message.archivedByRecipient = false;
+    } else {
+      throw new NotFoundException('Message non trouvé');
+    }
+
+    return await this.messageRepository.save(message);
   }
 
   async unarchiveConversation(
@@ -271,120 +287,15 @@ export class MessagingService {
       .update(Message)
       .set({
         archivedBySender: () =>
-          'CASE WHEN sender_id = :userId THEN false ELSE archived_by_sender END',
+          'CASE WHEN "senderId" = :userId THEN false ELSE "archivedBySender" END',
         archivedByRecipient: () =>
-          'CASE WHEN recipient_id = :userId THEN false ELSE archived_by_recipient END',
+          'CASE WHEN "recipientId" = :userId THEN false ELSE "archivedByRecipient" END',
       })
       .where(
-        '(sender_id = :userId AND recipient_id = :otherUserId) OR (sender_id = :otherUserId AND recipient_id = :userId)',
+        '("senderId" = :userId AND "recipientId" = :otherUserId) OR ("senderId" = :otherUserId AND "recipientId" = :userId)',
         { userId, otherUserId },
       )
       .execute();
-  }
-
-  async getArchivedConversations(
-    userId: string,
-    pagination: PaginationDto = { page: 1, limit: 10 },
-  ): Promise<PaginatedResponse<ConversationWithDetails>> {
-    const skip = (pagination.page - 1) * pagination.limit;
-
-    const query = this.messageRepository
-      .createQueryBuilder('message')
-      .select([
-        'CASE WHEN message.sender_id = :userId THEN message.recipient_id ELSE message.sender_id END as otherUserId',
-        'MAX(message.created_at) as lastMessageDate',
-      ])
-      .where(
-        '(message.sender_id = :userId AND message.archived_by_sender = true) OR (message.recipient_id = :userId AND message.archived_by_recipient = true)',
-        { userId },
-      )
-      .groupBy('otherUserId')
-      .orderBy('lastMessageDate', 'DESC')
-      .offset(skip)
-      .limit(pagination.limit);
-
-    const [rawConversations, total] = await Promise.all([
-      query.getRawMany(),
-      query.getCount(),
-    ]);
-
-    const conversationsWithDetails = await Promise.all(
-      rawConversations.map(async (conv: ConversationResult) => {
-        const otherUser = await this.userRepository.findOne({
-          where: { id: conv.otherUserId },
-          select: ['id', 'firstName', 'lastName', 'email', 'avatar'],
-        });
-
-        const lastMessage = await this.messageRepository.findOne({
-          where: [
-            { senderId: userId, recipientId: conv.otherUserId },
-            { senderId: conv.otherUserId, recipientId: userId },
-          ],
-          order: { createdAt: 'DESC' },
-        });
-
-        return {
-          otherUser,
-          lastMessage,
-          lastMessageDate: conv.lastMessageDate,
-        };
-      }),
-    );
-
-    const lastPage = Math.ceil(total / pagination.limit);
-
-    return {
-      data: conversationsWithDetails,
-      meta: {
-        total,
-        page: pagination.page,
-        lastPage,
-      },
-    };
-  }
-
-  async archiveMessage(messageId: string, userId: string): Promise<Message> {
-    const message = await this.messageRepository.findOne({
-      where: [
-        { id: messageId, senderId: userId },
-        { id: messageId, recipientId: userId },
-      ],
-    });
-
-    if (!message) {
-      throw new NotFoundException('Message non trouvé');
-    }
-
-    if (message.senderId === userId) {
-      message.archivedBySender = true;
-    }
-    if (message.recipientId === userId) {
-      message.archivedByRecipient = true;
-    }
-
-    return await this.messageRepository.save(message);
-  }
-
-  async unarchiveMessage(messageId: string, userId: string): Promise<Message> {
-    const message = await this.messageRepository.findOne({
-      where: [
-        { id: messageId, senderId: userId },
-        { id: messageId, recipientId: userId },
-      ],
-    });
-
-    if (!message) {
-      throw new NotFoundException('Message non trouvé');
-    }
-
-    if (message.senderId === userId) {
-      message.archivedBySender = false;
-    }
-    if (message.recipientId === userId) {
-      message.archivedByRecipient = false;
-    }
-
-    return await this.messageRepository.save(message);
   }
 
   async getArchivedMessages(
@@ -393,29 +304,67 @@ export class MessagingService {
   ): Promise<PaginatedResponse<Message>> {
     const skip = (pagination.page - 1) * pagination.limit;
 
-    const queryBuilder = this.messageRepository.createQueryBuilder('message');
-
-    queryBuilder
+    const [messages, total] = await this.messageRepository
+      .createQueryBuilder('message')
       .where(
-        '(message.sender_id = :userId AND message.archived_by_sender = true) OR (message.recipient_id = :userId AND message.archived_by_recipient = true)',
+        '(message.senderId = :userId AND message.archivedBySender = true) OR (message.recipientId = :userId AND message.archivedByRecipient = true)',
         { userId },
       )
-      .leftJoinAndSelect('message.sender', 'sender')
-      .leftJoinAndSelect('message.recipient', 'recipient')
-      .leftJoinAndSelect('message.product', 'product')
       .orderBy('message.createdAt', 'DESC')
       .skip(skip)
-      .take(pagination.limit);
-
-    const [messages, total] = await queryBuilder.getManyAndCount();
-    const lastPage = Math.ceil(total / pagination.limit);
+      .take(pagination.limit)
+      .getManyAndCount();
 
     return {
       data: messages,
       meta: {
         total,
         page: pagination.page,
-        lastPage,
+        lastPage: Math.ceil(total / pagination.limit),
+      },
+    };
+  }
+
+  async getArchivedConversations(
+    userId: string,
+    pagination: PaginationDto = { page: 1, limit: 10 },
+  ): Promise<PaginatedResponse<ConversationWithDetails>> {
+    const skip = (pagination.page - 1) * pagination.limit;
+
+    const [conversations, total] = await this.messageRepository
+      .createQueryBuilder('message')
+      .where(
+        '(message.senderId = :userId AND message.archivedBySender = true) OR (message.recipientId = :userId AND message.archivedByRecipient = true)',
+        { userId },
+      )
+      .orderBy('message.createdAt', 'DESC')
+      .skip(skip)
+      .take(pagination.limit)
+      .getManyAndCount();
+
+    const conversationsWithDetails = await Promise.all(
+      conversations.map(async (message) => {
+        const otherUserId =
+          message.senderId === userId ? message.recipientId : message.senderId;
+        const otherUser = await this.userRepository.findOne({
+          where: { id: otherUserId },
+          select: ['id', 'firstName', 'lastName', 'email', 'avatar'],
+        });
+
+        return {
+          otherUser,
+          lastMessage: message,
+          lastMessageDate: message.createdAt,
+        };
+      }),
+    );
+
+    return {
+      data: conversationsWithDetails,
+      meta: {
+        total,
+        page: pagination.page,
+        lastPage: Math.ceil(total / pagination.limit),
       },
     };
   }

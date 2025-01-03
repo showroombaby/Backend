@@ -8,61 +8,99 @@ import helmet from 'helmet';
 import { join } from 'path';
 import { AppModule } from './app.module';
 import { GlobalExceptionFilter } from './common/filters/http-exception.filter';
+import { PerformanceInterceptor } from './common/interceptors/performance.interceptor';
 import { TransformInterceptor } from './common/interceptors/transform.interceptor';
+import { MonitoringService } from './modules/monitoring/services/monitoring.service';
 
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
 
   try {
-    const app = await NestFactory.create<NestExpressApplication>(AppModule);
+    const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+      logger: ['error', 'warn', 'log', 'debug', 'verbose'],
+    });
 
     // Sécurité
     app.use(helmet());
-    app.use(compression());
+    app.enableCors({
+      origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+      credentials: true,
+    });
+
+    // Compression
+    app.use(
+      compression({
+        threshold: 0, // Compresser toutes les réponses
+        level: 6, // Niveau de compression (1-9)
+      }),
+    );
 
     // Validation globale
     app.useGlobalPipes(
       new ValidationPipe({
-        whitelist: true,
         transform: true,
+        whitelist: true,
         forbidNonWhitelisted: true,
-        transformOptions: {
-          enableImplicitConversion: true,
-        },
       }),
     );
 
-    // Adaptateur WebSocket
+    // Intercepteurs globaux
+    const monitoringService = app.get(MonitoringService);
+    app.useGlobalInterceptors(
+      new TransformInterceptor(),
+      new PerformanceInterceptor(monitoringService),
+    );
+
+    // Gestion des erreurs globale
+    app.useGlobalFilters(new GlobalExceptionFilter());
+
+    // WebSocket
     app.useWebSocketAdapter(new IoAdapter(app));
 
-    // Filtres et intercepteurs globaux
-    app.useGlobalFilters(new GlobalExceptionFilter());
-    app.useGlobalInterceptors(new TransformInterceptor());
-
-    // Configuration Swagger
+    // Documentation Swagger
     const config = new DocumentBuilder()
       .setTitle('ShowroomBaby API')
-      .setDescription('API pour la plateforme ShowroomBaby')
+      .setDescription(
+        `
+API pour l'application ShowroomBaby.
+
+Guide d'authentification :
+1. Créez un compte via /auth/register
+2. Connectez-vous via /auth/login pour obtenir un token JWT
+3. Utilisez le token dans le header Authorization: Bearer <token>
+
+Codes d'erreur globaux :
+- 400: Requête invalide
+- 401: Non authentifié
+- 403: Non autorisé
+- 404: Ressource non trouvée
+- 429: Trop de requêtes
+- 500: Erreur serveur
+
+WebSocket :
+Les événements WebSocket sont disponibles via Socket.IO.
+Voir la documentation /api/docs#/messaging pour plus de détails.
+      `,
+      )
       .setVersion('1.0')
       .addBearerAuth()
       .addTag('auth', 'Authentification')
       .addTag('users', 'Gestion des utilisateurs')
       .addTag('products', 'Gestion des produits')
       .addTag('messages', 'Messagerie en temps réel')
+      .addTag('monitoring', 'Métriques et monitoring')
+      .addTag('offline', 'Mode hors-ligne')
+      .addServer('http://localhost:3000', 'Serveur local')
+      .addServer('https://api.showroombaby.com', 'Serveur de production')
       .build();
+
     const document = SwaggerModule.createDocument(app, config);
     SwaggerModule.setup('api', app, document);
-
-    // CORS
-    app.enableCors({
-      origin: process.env.FRONTEND_URL || 'http://localhost:3000',
-      methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
-      credentials: true,
-    });
 
     // Servir les fichiers statiques
     app.useStaticAssets(join(__dirname, '..', 'uploads'), {
       prefix: '/uploads/',
+      maxAge: '1d', // Cache client 1 jour
     });
 
     const port = process.env.PORT || 3000;
@@ -73,4 +111,5 @@ async function bootstrap() {
     throw error;
   }
 }
+
 bootstrap();

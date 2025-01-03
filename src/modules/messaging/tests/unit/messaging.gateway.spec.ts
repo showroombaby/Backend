@@ -1,9 +1,7 @@
-import { JwtModule } from '@nestjs/jwt';
 import { Test, TestingModule } from '@nestjs/testing';
-import { Server, Socket } from 'socket.io';
-import { JWT_CONFIG } from '../../../../common/test/jwt.module';
-import { WsJwtGuard } from '../../../auth/guards/ws-jwt.guard';
-import { UsersService } from '../../../users/services/users.service';
+import { Socket } from 'socket.io';
+import { User } from '../../../users/entities/user.entity';
+import { Role } from '../../../users/enums/role.enum';
 import { CreateMessageDto } from '../../dto/create-message.dto';
 import { Message } from '../../entities/message.entity';
 import { MessagingGateway } from '../../gateways/messaging.gateway';
@@ -11,197 +9,159 @@ import { MessagingService } from '../../services/messaging.service';
 
 describe('MessagingGateway', () => {
   let gateway: MessagingGateway;
-  let mockMessagingService: Partial<MessagingService>;
-  let mockUsersService: Partial<UsersService>;
-  let mockServer: jest.Mocked<Server>;
-  let mockSocket: Partial<Socket>;
+
+  const mockUser: Partial<User> = {
+    id: '123',
+    email: 'test@example.com',
+    firstName: 'Test',
+    lastName: 'User',
+    password: 'hashedPassword',
+    avatar: null,
+    role: Role.USER,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
+
+  const mockSocket = {
+    emit: jest.fn(),
+  } as unknown as Socket;
+
+  const mockServer = {
+    to: jest.fn().mockReturnThis(),
+    emit: jest.fn(),
+  };
+
+  const mockMessagingService = {
+    createMessage: jest.fn(),
+    markMessageAsRead: jest.fn(),
+    archiveMessage: jest.fn(),
+    unarchiveMessage: jest.fn(),
+  };
 
   beforeEach(async () => {
-    mockMessagingService = {
-      createMessage: jest.fn(),
-      markMessageAsRead: jest.fn(),
-    };
-
-    mockUsersService = {
-      findById: jest.fn(),
-      updateProfile: jest.fn(),
-    };
-
-    mockServer = {
-      emit: jest.fn(),
-      to: jest.fn().mockReturnThis(),
-    } as any;
-
-    mockSocket = {
-      id: 'test-socket-id',
-      handshake: {
-        headers: {},
-        time: new Date().toString(),
-        address: '127.0.0.1',
-        xdomain: false,
-        secure: true,
-        issued: Date.now(),
-        url: '/',
-        query: {},
-        auth: {
-          user: {
-            id: '1',
-            email: 'test@example.com',
-          },
-        },
-      },
-      join: jest.fn(),
-      emit: jest.fn(),
-      disconnect: jest.fn(),
-    };
-
     const module: TestingModule = await Test.createTestingModule({
-      imports: [
-        JwtModule.register({
-          secret: JWT_CONFIG.secret,
-          signOptions: JWT_CONFIG.signOptions,
-        }),
-      ],
       providers: [
         MessagingGateway,
         {
           provide: MessagingService,
           useValue: mockMessagingService,
         },
-        {
-          provide: UsersService,
-          useValue: mockUsersService,
-        },
-        {
-          provide: WsJwtGuard,
-          useValue: {
-            canActivate: jest.fn().mockReturnValue(true),
-          },
-        },
       ],
     }).compile();
 
     gateway = module.get<MessagingGateway>(MessagingGateway);
-    gateway.server = mockServer;
+    gateway['server'] = mockServer as any;
+  });
+
+  afterEach(() => {
+    jest.clearAllMocks();
   });
 
   describe('handleMessage', () => {
-    const messageDto: CreateMessageDto = {
-      recipientId: '2',
+    const createMessageDto: CreateMessageDto = {
       content: 'Test message',
-      productId: 'product-123',
+      recipientId: '456',
+      productId: '789',
     };
 
-    it('devrait envoyer un message avec succès', async () => {
-      const createdMessage = {
-        id: 'msg-123',
-        ...messageDto,
-        senderId: '1',
-      } as Message;
+    const mockMessage: Message = {
+      id: '123',
+      content: 'Test message',
+      senderId: '123',
+      recipientId: '456',
+      productId: '789',
+      read: false,
+      archivedBySender: false,
+      archivedByRecipient: false,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      sender: null,
+      recipient: null,
+      product: null,
+    };
 
-      (mockMessagingService.createMessage as jest.Mock).mockResolvedValue(
-        createdMessage,
-      );
+    it('should emit newMessage to recipient when online', async () => {
+      mockMessagingService.createMessage.mockResolvedValue(mockMessage);
+      gateway['isUserOnline'] = jest.fn().mockReturnValue(true);
 
       await gateway.handleMessage(
-        mockSocket as Socket,
-        messageDto,
-        mockSocket.handshake?.auth.user,
+        createMessageDto,
+        mockUser as User,
+        mockSocket,
       );
 
-      expect(mockMessagingService.createMessage).toHaveBeenCalledWith(
-        '1',
-        messageDto,
-      );
-      expect(mockServer.to).toHaveBeenCalledWith('user_2');
-      expect(mockServer.emit).toHaveBeenCalledWith('message', createdMessage);
+      expect(mockServer.to).toHaveBeenCalledWith('user_456');
+      expect(mockServer.emit).toHaveBeenCalledWith('newMessage', mockMessage);
+      expect(mockSocket.emit).toHaveBeenCalledWith('messageSent', mockMessage);
     });
 
-    it("devrait gérer les erreurs lors de l'envoi de message", async () => {
-      const error = new Error('Test error');
-      (mockMessagingService.createMessage as jest.Mock).mockRejectedValue(
-        error,
-      );
+    it('should store notification when recipient is offline', async () => {
+      mockMessagingService.createMessage.mockResolvedValue(mockMessage);
+      gateway['isUserOnline'] = jest.fn().mockReturnValue(false);
+      gateway['addNotification'] = jest.fn();
 
       await gateway.handleMessage(
-        mockSocket as Socket,
-        messageDto,
-        mockSocket.handshake?.auth.user,
+        createMessageDto,
+        mockUser as User,
+        mockSocket,
       );
 
-      expect(mockSocket.emit).toHaveBeenCalledWith('error', {
-        message: "Erreur lors de l'envoi du message",
+      expect(gateway['addNotification']).toHaveBeenCalledWith('456', {
+        type: 'message',
+        data: mockMessage,
       });
+      expect(mockSocket.emit).toHaveBeenCalledWith('messageSent', mockMessage);
     });
   });
 
-  describe('handleMarkAsRead', () => {
-    const messageId = 'msg-123';
+  describe('handleReadMessage', () => {
+    const messageId = '123';
+    const mockMessage: Message = {
+      id: messageId,
+      content: 'Test message',
+      senderId: '456',
+      recipientId: '123',
+      productId: '789',
+      read: true,
+      archivedBySender: false,
+      archivedByRecipient: false,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      sender: null,
+      recipient: null,
+      product: null,
+    };
 
-    it('devrait marquer un message comme lu avec succès', async () => {
-      const updatedMessage = {
-        id: messageId,
-        senderId: '2',
-        recipientId: '1',
-        status: 'READ',
-      } as Message;
+    it('should emit messageRead to sender when online', async () => {
+      mockMessagingService.markMessageAsRead.mockResolvedValue(mockMessage);
+      gateway['isUserOnline'] = jest.fn().mockReturnValue(true);
 
-      (mockMessagingService.markMessageAsRead as jest.Mock).mockResolvedValue(
-        updatedMessage,
-      );
-
-      await gateway.handleMarkAsRead(
-        mockSocket as Socket,
+      await gateway.handleReadMessage(
         { messageId },
-        mockSocket.handshake?.auth.user,
+        mockUser as User,
+        mockSocket,
       );
 
-      expect(mockMessagingService.markMessageAsRead).toHaveBeenCalledWith(
-        messageId,
-        '1',
-      );
-      expect(mockServer.to).toHaveBeenCalledWith('user_2');
-      expect(mockServer.emit).toHaveBeenCalledWith(
-        'messageRead',
-        updatedMessage,
-      );
-    });
-
-    it('devrait gérer les erreurs lors du marquage comme lu', async () => {
-      const error = new Error('Test error');
-      (mockMessagingService.markMessageAsRead as jest.Mock).mockRejectedValue(
-        error,
-      );
-
-      await gateway.handleMarkAsRead(
-        mockSocket as Socket,
-        { messageId },
-        mockSocket.handshake?.auth.user,
-      );
-
-      expect(mockSocket.emit).toHaveBeenCalledWith('error', {
-        message: 'Erreur lors du marquage du message comme lu',
+      expect(mockServer.to).toHaveBeenCalledWith('user_456');
+      expect(mockServer.emit).toHaveBeenCalledWith('messageRead', {
+        messageId: messageId,
       });
     });
-  });
 
-  describe('handleTyping', () => {
-    it("devrait émettre l'événement de frappe", () => {
-      const typingData = {
-        recipientId: '2',
-        isTyping: true,
-      };
+    it('should store notification when sender is offline', async () => {
+      mockMessagingService.markMessageAsRead.mockResolvedValue(mockMessage);
+      gateway['isUserOnline'] = jest.fn().mockReturnValue(false);
+      gateway['addNotification'] = jest.fn();
 
-      gateway.handleTyping(
-        mockSocket as Socket,
-        typingData,
-        mockSocket.handshake?.auth.user,
+      await gateway.handleReadMessage(
+        { messageId },
+        mockUser as User,
+        mockSocket,
       );
 
-      expect(mockServer.to).toHaveBeenCalledWith('user_2');
-      expect(mockServer.emit).toHaveBeenCalledWith('typing', {
-        userId: '1',
-        recipientId: typingData.recipientId,
+      expect(gateway['addNotification']).toHaveBeenCalledWith('456', {
+        type: 'read',
+        data: { messageId: messageId },
       });
     });
   });

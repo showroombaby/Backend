@@ -1,4 +1,4 @@
-import { CacheModule, CacheStore } from '@nestjs/cache-manager';
+import { CacheModule } from '@nestjs/cache-manager';
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
@@ -7,6 +7,9 @@ import databaseConfig from './config/database.config';
 import { validationSchema } from './config/env.validation';
 import { AuthModule } from './modules/auth/auth.module';
 import { EmailModule } from './modules/email/email.module';
+import { MessagingModule } from './modules/messaging/messaging.module';
+import { MonitoringModule } from './modules/monitoring/monitoring.module';
+import { OfflineModule } from './modules/offline/offline.module';
 import { ProductsModule } from './modules/products/products.module';
 import { StorageModule } from './modules/storage/storage.module';
 import { UsersModule } from './modules/users/users.module';
@@ -31,9 +34,21 @@ import { UsersModule } from './modules/users/users.module';
       isGlobal: true,
       imports: [ConfigModule],
       useFactory: async (configService: ConfigService) => ({
-        store: redisStore as unknown as CacheStore,
+        store: redisStore as any,
         host: configService.get('REDIS_HOST'),
         port: configService.get('REDIS_PORT'),
+        ttl: 3600, // 1 heure par défaut
+        max: 1000, // Nombre maximum d'éléments en cache
+        isGlobal: true,
+        retryStrategy: (times: number) => {
+          // Stratégie de reconnexion
+          const delay = Math.min(times * 50, 2000);
+          return delay;
+        },
+        commandTimeout: 5000, // Timeout des commandes Redis
+        compression: {
+          threshold: 1024, // Compresser les valeurs > 1KB
+        },
       }),
       inject: [ConfigService],
     }),
@@ -43,6 +58,9 @@ import { UsersModule } from './modules/users/users.module';
     EmailModule,
     ProductsModule,
     StorageModule,
+    MessagingModule,
+    MonitoringModule,
+    OfflineModule,
   ],
   controllers: [],
   providers: [],
