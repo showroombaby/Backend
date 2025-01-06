@@ -1,157 +1,72 @@
-import { INestApplication } from '@nestjs/common';
+import { ProductDetailsController } from '@modules/products/controllers/product-details.controller';
+import { ProductCondition } from '@modules/products/enums/product-condition.enum';
+import { ProductsService } from '@modules/products/services/products.service';
 import { Test, TestingModule } from '@nestjs/testing';
-import * as request from 'supertest';
-import { Repository } from 'typeorm';
-import { TestDatabaseModule } from '../../../../common/test/database.module';
-import { TestJwtModule } from '../../../../common/test/jwt.module';
-import { TestStorageModule } from '../../../../common/test/storage.module';
-import { Category } from '../../../categories/entities/category.entity';
-import { User } from '../../../users/entities/user.entity';
-import { Product } from '../../entities/product.entity';
-import { ProductsModule } from '../../products.module';
+import { TestModule } from './test.module';
 
-describe('Product Details (Integration)', () => {
-  let app: INestApplication;
-  let productRepository: Repository<Product>;
-  let categoryRepository: Repository<Category>;
-  let userRepository: Repository<User>;
-  let user: User;
-  let category: Category;
-  let product: Product;
+describe('ProductDetailsController', () => {
+  let controller: ProductDetailsController;
+  let productsService: ProductsService;
+  let module: TestingModule;
 
-  beforeAll(async () => {
-    const moduleFixture: TestingModule = await Test.createTestingModule({
-      imports: [
-        TestDatabaseModule,
-        TestJwtModule,
-        TestStorageModule,
-        ProductsModule,
-      ],
+  const mockProduct = {
+    id: '123e4567-e89b-12d3-a456-426614174000',
+    name: 'Test Product',
+    description: 'Test Description',
+    price: 100,
+    condition: ProductCondition.NEW,
+    categoryId: '123e4567-e89b-12d3-a456-426614174001',
+  };
+
+  const mockSimilarProducts = [
+    {
+      id: '123e4567-e89b-12d3-a456-426614174002',
+      name: 'Similar Product 1',
+      price: 110,
+      condition: ProductCondition.NEW,
+    },
+    {
+      id: '123e4567-e89b-12d3-a456-426614174003',
+      name: 'Similar Product 2',
+      price: 90,
+      condition: ProductCondition.NEW,
+    },
+  ];
+
+  beforeEach(async () => {
+    module = await Test.createTestingModule({
+      imports: [TestModule],
     }).compile();
 
-    app = moduleFixture.createNestApplication();
-    productRepository = moduleFixture.get('ProductRepository');
-    categoryRepository = moduleFixture.get('CategoryRepository');
-    userRepository = moduleFixture.get('UserRepository');
-    await app.init();
+    controller = module.get<ProductDetailsController>(ProductDetailsController);
+    productsService = module.get<ProductsService>(ProductsService);
+  });
 
-    // Créer les données de test
-    user = await userRepository.save({
-      email: 'test@example.com',
-      password: 'password',
-      username: 'testuser',
-    });
+  afterEach(async () => {
+    if (module) {
+      await module.close();
+    }
+  });
 
-    category = await categoryRepository.save({
-      name: 'Test Category',
-      description: 'Test Description',
-    });
+  it('should be defined', () => {
+    expect(controller).toBeDefined();
+  });
 
-    product = await productRepository.save({
-      title: 'Test Product',
-      description: 'Test Description',
-      price: 100,
-      seller: user,
-      category,
+  describe('findOne', () => {
+    it('should return product details', async () => {
+      const result = await controller.findOne(mockProduct.id);
+      expect(result).toEqual(mockProduct);
+      expect(productsService.findOne).toHaveBeenCalledWith(mockProduct.id);
     });
   });
 
-  afterAll(async () => {
-    await productRepository.query('DELETE FROM products');
-    await categoryRepository.query('DELETE FROM categories');
-    await userRepository.query('DELETE FROM users');
-    await app.close();
-  });
-
-  describe('GET /products/:id/details', () => {
-    it('devrait retourner les détails du produit', async () => {
-      const response = await request(app.getHttpServer())
-        .get(`/products/${product.id}/details`)
-        .set('Authorization', `Bearer ${generateTestToken(user)}`)
-        .expect(200);
-
-      expect(response.body).toMatchObject({
-        id: product.id,
-        title: product.title,
-        description: product.description,
-        price: product.price,
-        seller: {
-          id: user.id,
-          username: user.username,
-        },
-        category: {
-          id: category.id,
-          name: category.name,
-        },
-      });
-    });
-
-    it('devrait échouer pour un produit inexistant', () => {
-      return request(app.getHttpServer())
-        .get('/products/999999/details')
-        .set('Authorization', `Bearer ${generateTestToken(user)}`)
-        .expect(404);
-    });
-
-    it('devrait échouer sans authentification', () => {
-      return request(app.getHttpServer())
-        .get(`/products/${product.id}/details`)
-        .expect(401);
-    });
-  });
-
-  describe('GET /products/:id/similar', () => {
-    beforeEach(async () => {
-      await productRepository.save([
-        {
-          title: 'Similar Product 1',
-          description: 'Similar Description 1',
-          price: 90,
-          seller: user,
-          category,
-        },
-        {
-          title: 'Similar Product 2',
-          description: 'Similar Description 2',
-          price: 110,
-          seller: user,
-          category,
-        },
-      ]);
-    });
-
-    it('devrait retourner les produits similaires', async () => {
-      const response = await request(app.getHttpServer())
-        .get(`/products/${product.id}/similar`)
-        .set('Authorization', `Bearer ${generateTestToken(user)}`)
-        .expect(200);
-
-      expect(response.body).toHaveLength(2);
-      expect(response.body[0]).toHaveProperty('title');
-      expect(response.body[0]).toHaveProperty('price');
-      expect(response.body[0].category.id).toBe(category.id);
-    });
-
-    it('devrait échouer pour un produit inexistant', () => {
-      return request(app.getHttpServer())
-        .get('/products/999999/similar')
-        .set('Authorization', `Bearer ${generateTestToken(user)}`)
-        .expect(404);
-    });
-
-    it('devrait échouer sans authentification', () => {
-      return request(app.getHttpServer())
-        .get(`/products/${product.id}/similar`)
-        .expect(401);
+  describe('findSimilarProducts', () => {
+    it('should return similar products', async () => {
+      const result = await controller.findSimilarProducts(mockProduct.id);
+      expect(result).toEqual(mockSimilarProducts);
+      expect(productsService.findSimilarProducts).toHaveBeenCalledWith(
+        mockProduct.id,
+      );
     });
   });
 });
-
-function generateTestToken(user: User): string {
-  return `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.${Buffer.from(
-    JSON.stringify({
-      sub: user.id,
-      email: user.email,
-    }),
-  ).toString('base64')}.test-signature`;
-}

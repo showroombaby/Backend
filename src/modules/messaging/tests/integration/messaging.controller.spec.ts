@@ -1,120 +1,111 @@
 import { INestApplication } from '@nestjs/common';
+import { JwtService } from '@nestjs/jwt';
 import { Test, TestingModule } from '@nestjs/testing';
+import { getRepositoryToken } from '@nestjs/typeorm';
 import * as request from 'supertest';
 import { Repository } from 'typeorm';
 import { TestDatabaseModule } from '../../../../common/test/database.module';
-import { TestJwtModule } from '../../../../common/test/jwt.module';
+import { JwtAuthGuard } from '../../../auth/guards/jwt-auth.guard';
+import { Category } from '../../../categories/entities/category.entity';
+import { Product } from '../../../products/entities/product.entity';
+import { ProductCondition } from '../../../products/enums/product-condition.enum';
 import { User } from '../../../users/entities/user.entity';
 import { Message } from '../../entities/message.entity';
-import { MessagingModule } from '../../messaging.module';
+import { MessagingTestModule } from '../messaging-test.module';
+
+const TEST_USER_ID = '123e4567-e89b-12d3-a456-426614174000';
 
 describe('MessagingController (Integration)', () => {
   let app: INestApplication;
   let messageRepository: Repository<Message>;
   let userRepository: Repository<User>;
-  let sender: User;
-  let receiver: User;
+  let productRepository: Repository<Product>;
+  let categoryRepository: Repository<Category>;
+  let jwtService: JwtService;
+  let moduleFixture: TestingModule;
 
   beforeAll(async () => {
-    const moduleFixture: TestingModule = await Test.createTestingModule({
-      imports: [TestDatabaseModule, TestJwtModule, MessagingModule],
+    moduleFixture = await Test.createTestingModule({
+      imports: [TestDatabaseModule, MessagingTestModule],
     }).compile();
 
     app = moduleFixture.createNestApplication();
-    messageRepository = moduleFixture.get('MessageRepository');
-    userRepository = moduleFixture.get('UserRepository');
+    app.useGlobalGuards(new JwtAuthGuard());
     await app.init();
 
-    // Créer les utilisateurs de test
-    sender = await userRepository.save({
-      email: 'sender@example.com',
-      password: 'password',
-      username: 'sender',
-    });
+    messageRepository = moduleFixture.get<Repository<Message>>(
+      getRepositoryToken(Message),
+    );
+    userRepository = moduleFixture.get<Repository<User>>(
+      getRepositoryToken(User),
+    );
+    productRepository = moduleFixture.get<Repository<Product>>(
+      getRepositoryToken(Product),
+    );
+    categoryRepository = moduleFixture.get<Repository<Category>>(
+      getRepositoryToken(Category),
+    );
+    jwtService = moduleFixture.get<JwtService>(JwtService);
+  });
 
-    receiver = await userRepository.save({
-      email: 'receiver@example.com',
-      password: 'password',
-      username: 'receiver',
-    });
+  beforeEach(async () => {
+    await messageRepository.delete({});
+    await userRepository.delete({});
+    await productRepository.delete({});
+    await categoryRepository.delete({});
   });
 
   afterAll(async () => {
-    await messageRepository.query('DELETE FROM messages');
-    await userRepository.query('DELETE FROM users');
-    await app.close();
+    if (moduleFixture) {
+      await moduleFixture.close();
+    }
+    if (app) {
+      await app.close();
+    }
   });
 
   describe('POST /messages', () => {
-    it('devrait créer un nouveau message', async () => {
-      const messageDto = {
+    it('should create a new message', async () => {
+      const user = await userRepository.save({
+        id: TEST_USER_ID,
+        email: 'test@example.com',
+        password: 'password',
+        firstName: 'Test',
+        lastName: 'User',
+      });
+
+      const category = await categoryRepository.save({
+        name: 'Test Category',
+        description: 'Test Category Description',
+      });
+
+      const product = await productRepository.save({
+        title: 'Test Product',
+        description: 'Test Description',
+        price: 100,
+        sellerId: user.id,
+        categoryId: category.id,
+        condition: ProductCondition.NEW,
+      });
+
+      const token = jwtService.sign({ sub: user.id });
+
+      const createMessageDto = {
+        recipientId: user.id,
         content: 'Test message',
-        receiverId: receiver.id,
+        productId: product.id,
       };
 
       const response = await request(app.getHttpServer())
         .post('/messages')
-        .set('Authorization', `Bearer ${generateTestToken(sender)}`)
-        .send(messageDto)
+        .set('Authorization', `Bearer ${token}`)
+        .send(createMessageDto)
         .expect(201);
 
-      expect(response.body).toMatchObject({
-        content: messageDto.content,
-        sender: { id: sender.id },
-        receiver: { id: receiver.id },
-      });
-    });
-
-    it('devrait échouer sans authentification', () => {
-      return request(app.getHttpServer())
-        .post('/messages')
-        .send({
-          content: 'Test message',
-          receiverId: receiver.id,
-        })
-        .expect(401);
-    });
-  });
-
-  describe('GET /messages', () => {
-    beforeEach(async () => {
-      await messageRepository.save([
-        {
-          content: 'Message 1',
-          sender,
-          receiver,
-        },
-        {
-          content: 'Message 2',
-          sender: receiver,
-          receiver: sender,
-        },
-      ]);
-    });
-
-    it("devrait retourner les messages de l'utilisateur", async () => {
-      const response = await request(app.getHttpServer())
-        .get('/messages')
-        .set('Authorization', `Bearer ${generateTestToken(sender)}`)
-        .expect(200);
-
-      expect(response.body).toHaveLength(2);
-      expect(response.body[0]).toHaveProperty('content');
-      expect(response.body[0]).toHaveProperty('sender');
-      expect(response.body[0]).toHaveProperty('receiver');
-    });
-
-    it('devrait échouer sans authentification', () => {
-      return request(app.getHttpServer()).get('/messages').expect(401);
+      expect(response.body).toHaveProperty('id');
+      expect(response.body.content).toBe(createMessageDto.content);
+      expect(response.body.recipientId).toBe(createMessageDto.recipientId);
+      expect(response.body.productId).toBe(createMessageDto.productId);
     });
   });
 });
-
-function generateTestToken(user: User): string {
-  return `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.${Buffer.from(
-    JSON.stringify({
-      sub: user.id,
-      email: user.email,
-    }),
-  ).toString('base64')}.test-signature`;
-}

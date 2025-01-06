@@ -351,9 +351,18 @@ export class MessagingService {
           select: ['id', 'firstName', 'lastName', 'email', 'avatar'],
         });
 
+        const unreadCount = await this.messageRepository.count({
+          where: {
+            senderId: otherUserId,
+            recipientId: userId,
+            read: false,
+          },
+        });
+
         return {
           otherUser,
           lastMessage: message,
+          unreadCount,
           lastMessageDate: message.createdAt,
         };
       }),

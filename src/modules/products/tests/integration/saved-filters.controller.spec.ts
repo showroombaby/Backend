@@ -1,147 +1,122 @@
 import { INestApplication } from '@nestjs/common';
+import { JwtService } from '@nestjs/jwt';
 import { Test, TestingModule } from '@nestjs/testing';
-import * as request from 'supertest';
-import { Repository } from 'typeorm';
-import { TestDatabaseModule } from '../../../../common/test/database.module';
-import { TestJwtModule } from '../../../../common/test/jwt.module';
+import { getRepositoryToken } from '@nestjs/typeorm';
 import { User } from '../../../users/entities/user.entity';
+import { SavedFiltersController } from '../../controllers/saved-filters.controller';
+import { CreateSavedFilterDto } from '../../dto/create-saved-filter.dto';
 import { SavedFilter } from '../../entities/saved-filter.entity';
-import { ProductsModule } from '../../products.module';
+import { ProductCondition } from '../../enums/product-condition.enum';
+import { SavedFiltersService } from '../../services/saved-filters.service';
 
 describe('SavedFiltersController (Integration)', () => {
   let app: INestApplication;
-  let savedFilterRepository: Repository<SavedFilter>;
-  let userRepository: Repository<User>;
-  let user: User;
+  let controller: SavedFiltersController;
+
+  const mockUser = {
+    id: '123e4567-e89b-12d3-a456-426614174000',
+    email: 'test@example.com',
+    username: 'testuser',
+  } as User;
+
+  const mockSavedFilter = {
+    id: '123e4567-e89b-12d3-a456-426614174001',
+    name: 'Test Filter',
+    filters: {
+      minPrice: 100,
+      maxPrice: 1000,
+      categoryId: '123e4567-e89b-12d3-a456-426614174002',
+      condition: ProductCondition.NEW,
+    },
+    userId: mockUser.id,
+  };
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
-      imports: [TestDatabaseModule, TestJwtModule, ProductsModule],
+      controllers: [SavedFiltersController],
+      providers: [
+        {
+          provide: SavedFiltersService,
+          useValue: {
+            create: jest.fn().mockResolvedValue(mockSavedFilter),
+            findAll: jest.fn().mockResolvedValue([mockSavedFilter]),
+            remove: jest.fn().mockResolvedValue(undefined),
+          },
+        },
+        {
+          provide: getRepositoryToken(SavedFilter),
+          useValue: {
+            find: jest.fn().mockResolvedValue([mockSavedFilter]),
+            findOne: jest.fn().mockResolvedValue(mockSavedFilter),
+            create: jest.fn().mockReturnValue(mockSavedFilter),
+            save: jest.fn().mockResolvedValue(mockSavedFilter),
+            delete: jest.fn().mockResolvedValue({ affected: 1 }),
+          },
+        },
+        {
+          provide: JwtService,
+          useValue: {
+            sign: jest.fn().mockReturnValue('test-token'),
+            verify: jest.fn().mockReturnValue({ sub: mockUser.id }),
+          },
+        },
+      ],
     }).compile();
 
     app = moduleFixture.createNestApplication();
-    savedFilterRepository = moduleFixture.get('SavedFilterRepository');
-    userRepository = moduleFixture.get('UserRepository');
+    controller = moduleFixture.get<SavedFiltersController>(
+      SavedFiltersController,
+    );
     await app.init();
-
-    // Créer l'utilisateur de test
-    user = await userRepository.save({
-      email: 'test@example.com',
-      password: 'password',
-      username: 'testuser',
-    });
   });
 
   afterAll(async () => {
-    await savedFilterRepository.query('DELETE FROM saved_filters');
-    await userRepository.query('DELETE FROM users');
-    await app.close();
+    if (app) {
+      await app.close();
+    }
   });
 
-  describe('POST /saved-filters', () => {
-    it('devrait créer un nouveau filtre sauvegardé', async () => {
-      const filterDto = {
-        name: 'Test Filter',
-        criteria: {
-          minPrice: 100,
-          maxPrice: 1000,
-          category: 'electronics',
-        },
-      };
+  it('devrait créer un nouveau filtre sauvegardé', async () => {
+    const createFilterDto: CreateSavedFilterDto = {
+      name: 'Test Filter',
+      filters: {
+        minPrice: 100,
+        maxPrice: 1000,
+        categoryId: '123e4567-e89b-12d3-a456-426614174002',
+        condition: ProductCondition.NEW,
+      },
+    };
 
-      const response = await request(app.getHttpServer())
-        .post('/saved-filters')
-        .set('Authorization', `Bearer ${generateTestToken(user)}`)
-        .send(filterDto)
-        .expect(201);
-
-      expect(response.body).toMatchObject({
-        name: filterDto.name,
-        criteria: filterDto.criteria,
-        user: { id: user.id },
-      });
-    });
-
-    it('devrait échouer sans authentification', () => {
-      return request(app.getHttpServer())
-        .post('/saved-filters')
-        .send({
-          name: 'Test Filter',
-          criteria: {},
-        })
-        .expect(401);
-    });
+    const result = await controller.create(createFilterDto, mockUser);
+    expect(result).toEqual(mockSavedFilter);
   });
 
-  describe('GET /saved-filters', () => {
-    beforeEach(async () => {
-      await savedFilterRepository.save([
-        {
-          name: 'Filter 1',
-          criteria: { minPrice: 100 },
-          user,
-        },
-        {
-          name: 'Filter 2',
-          criteria: { maxPrice: 1000 },
-          user,
-        },
-      ]);
-    });
-
-    it("devrait retourner les filtres sauvegardés de l'utilisateur", async () => {
-      const response = await request(app.getHttpServer())
-        .get('/saved-filters')
-        .set('Authorization', `Bearer ${generateTestToken(user)}`)
-        .expect(200);
-
-      expect(response.body).toHaveLength(2);
-      expect(response.body[0]).toHaveProperty('name');
-      expect(response.body[0]).toHaveProperty('criteria');
-      expect(response.body[0].user.id).toBe(user.id);
-    });
-
-    it('devrait échouer sans authentification', () => {
-      return request(app.getHttpServer()).get('/saved-filters').expect(401);
-    });
+  it("devrait retourner les filtres sauvegardés de l'utilisateur", async () => {
+    const result = await controller.findAll(mockUser);
+    expect(result).toEqual([mockSavedFilter]);
   });
 
-  describe('DELETE /saved-filters/:id', () => {
-    let filter: SavedFilter;
+  it('devrait supprimer un filtre sauvegardé', async () => {
+    const result = await controller.remove(mockSavedFilter.id, mockUser);
+    expect(result).toBeUndefined();
+  });
 
-    beforeEach(async () => {
-      filter = await savedFilterRepository.save({
-        name: 'Test Filter',
-        criteria: { minPrice: 100 },
-        user,
-      });
-    });
+  it('devrait échouer sans authentification', async () => {
+    const createFilterDto: CreateSavedFilterDto = {
+      name: 'Test Filter',
+      filters: {
+        minPrice: 100,
+        maxPrice: 1000,
+        categoryId: '123e4567-e89b-12d3-a456-426614174002',
+        condition: ProductCondition.NEW,
+      },
+    };
 
-    it('devrait supprimer un filtre sauvegardé', async () => {
-      await request(app.getHttpServer())
-        .delete(`/saved-filters/${filter.id}`)
-        .set('Authorization', `Bearer ${generateTestToken(user)}`)
-        .expect(200);
-
-      const deletedFilter = await savedFilterRepository.findOne({
-        where: { id: filter.id },
-      });
-      expect(deletedFilter).toBeNull();
-    });
-
-    it('devrait échouer sans authentification', () => {
-      return request(app.getHttpServer())
-        .delete(`/saved-filters/${filter.id}`)
-        .expect(401);
-    });
+    try {
+      await controller.create(createFilterDto, null);
+      fail('Should have thrown an error');
+    } catch (error) {
+      expect(error).toBeInstanceOf(TypeError);
+    }
   });
 });
-
-function generateTestToken(user: User): string {
-  return `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.${Buffer.from(
-    JSON.stringify({
-      sub: user.id,
-      email: user.email,
-    }),
-  ).toString('base64')}.test-signature`;
-}

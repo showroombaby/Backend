@@ -7,11 +7,16 @@ import { SavedFilter } from '@modules/products/entities/saved-filter.entity';
 import { User } from '@modules/users/entities/user.entity';
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { JwtModule } from '@nestjs/jwt';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { TestConfigModule } from './config.module';
 import { TestDatabaseModule } from './database.module';
-import { TestJwtModule } from './jwt.module';
 import { TestStorageModule } from './storage.module';
+
+export const JWT_CONFIG = {
+  secret: 'test-secret',
+  expiresIn: '1h',
+};
 
 @Module({
   imports: [
@@ -19,9 +24,12 @@ import { TestStorageModule } from './storage.module';
       envFilePath: 'src/config/test.env',
       isGlobal: true,
     }),
+    JwtModule.register({
+      secret: JWT_CONFIG.secret,
+      signOptions: { expiresIn: JWT_CONFIG.expiresIn },
+    }),
     TestConfigModule,
     TestDatabaseModule,
-    TestJwtModule,
     TestStorageModule,
     TypeOrmModule.forFeature([
       User,
@@ -35,9 +43,9 @@ import { TestStorageModule } from './storage.module';
   ],
   exports: [
     ConfigModule,
+    JwtModule,
     TestConfigModule,
     TestDatabaseModule,
-    TestJwtModule,
     TestStorageModule,
     TypeOrmModule,
   ],
@@ -51,9 +59,12 @@ export class TestModule {
           envFilePath: 'src/config/test.env',
           isGlobal: true,
         }),
+        JwtModule.register({
+          secret: JWT_CONFIG.secret,
+          signOptions: { expiresIn: JWT_CONFIG.expiresIn },
+        }),
         TestConfigModule,
         TestDatabaseModule,
-        TestJwtModule,
         TestStorageModule,
         TypeOrmModule.forFeature([
           User,

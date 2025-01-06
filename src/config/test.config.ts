@@ -5,7 +5,12 @@ import { ProductView } from '@modules/products/entities/product-view.entity';
 import { Product } from '@modules/products/entities/product.entity';
 import { SavedFilter } from '@modules/products/entities/saved-filter.entity';
 import { User } from '@modules/users/entities/user.entity';
+import { Module } from '@nestjs/common';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+import { JwtModule } from '@nestjs/jwt';
+import { PassportModule } from '@nestjs/passport';
 import { TypeOrmModuleOptions } from '@nestjs/typeorm';
+import { JwtStrategy } from '../modules/auth/strategies/jwt.strategy';
 
 export const testConfig: TypeOrmModuleOptions = {
   type: 'postgres',
@@ -27,3 +32,35 @@ export const testConfig: TypeOrmModuleOptions = {
   dropSchema: true,
   logging: false,
 };
+
+const JWT_SECRET = 'test-secret';
+const JWT_EXPIRATION_TIME = '1h';
+
+@Module({
+  imports: [
+    ConfigModule.forRoot({
+      isGlobal: true,
+      load: [
+        () => ({
+          JWT_SECRET,
+          JWT_EXPIRATION_TIME,
+        }),
+      ],
+    }),
+    PassportModule.register({ defaultStrategy: 'jwt' }),
+    JwtModule.register({
+      secret: JWT_SECRET,
+      signOptions: { expiresIn: JWT_EXPIRATION_TIME },
+    }),
+  ],
+  providers: [
+    JwtStrategy,
+    ConfigService,
+    {
+      provide: 'JWT_SECRET',
+      useValue: JWT_SECRET,
+    },
+  ],
+  exports: [JwtModule, JwtStrategy, PassportModule, ConfigService],
+})
+export class TestJwtModule {}

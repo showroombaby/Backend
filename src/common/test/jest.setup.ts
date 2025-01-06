@@ -13,6 +13,22 @@ jest.mock('@nestjs/jwt', () => ({
     sign: jest.fn().mockReturnValue('test-token'),
     verify: jest.fn().mockReturnValue({ sub: '1', email: 'test@example.com' }),
   })),
+  JwtModule: {
+    register: jest.fn().mockReturnValue({
+      module: class JwtModule {},
+      providers: [
+        {
+          provide: 'JwtService',
+          useValue: {
+            sign: jest.fn().mockReturnValue('test-token'),
+            verify: jest
+              .fn()
+              .mockReturnValue({ sub: '1', email: 'test@example.com' }),
+          },
+        },
+      ],
+    }),
+  },
 }));
 
 // Mock du service de stockage

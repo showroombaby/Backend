@@ -1,19 +1,20 @@
-import { Global, Module } from '@nestjs/common';
+import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
+import { PassportModule } from '@nestjs/passport';
 
 export const JWT_CONFIG = {
-  secret: 'test-secret-key',
-  signOptions: { expiresIn: '24h' },
+  secret: 'test-secret',
+  expiresIn: '1h',
 };
 
-@Global()
 @Module({
   imports: [
+    PassportModule.register({ defaultStrategy: 'jwt' }),
     JwtModule.register({
       secret: JWT_CONFIG.secret,
-      signOptions: JWT_CONFIG.signOptions,
+      signOptions: { expiresIn: JWT_CONFIG.expiresIn },
     }),
   ],
-  exports: [JwtModule],
+  exports: [JwtModule, PassportModule],
 })
 export class TestJwtModule {}

@@ -1,36 +1,104 @@
 import { INestApplication } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { Reflector } from '@nestjs/core';
+import { JwtModule, JwtService } from '@nestjs/jwt';
+import { PassportModule } from '@nestjs/passport';
 import { Test, TestingModule } from '@nestjs/testing';
+import { TypeOrmModule, getRepositoryToken } from '@nestjs/typeorm';
+import * as jwt from 'jsonwebtoken';
 import * as request from 'supertest';
 import { Repository } from 'typeorm';
 import { TestDatabaseModule } from '../../../../common/test/database.module';
-import { TestJwtModule } from '../../../../common/test/jwt.module';
-import { TestStorageModule } from '../../../../common/test/storage.module';
+import { JwtAuthGuard } from '../../../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../../../auth/guards/roles.guard';
+import { JwtStrategy } from '../../../auth/strategies/jwt.strategy';
 import { User } from '../../../users/entities/user.entity';
 import { Role } from '../../../users/enums/role.enum';
-import { CategoriesModule } from '../../categories.module';
+import { UsersService } from '../../../users/services/users.service';
+import { CategoriesController } from '../../controllers/categories.controller';
 import { Category } from '../../entities/category.entity';
+import { CategoriesService } from '../../services/categories.service';
+
+const JWT_SECRET = 'test-secret-key';
 
 describe('CategoriesController (Integration)', () => {
   let app: INestApplication;
   let categoryRepository: Repository<Category>;
   let userRepository: Repository<User>;
+  let jwtService: JwtService;
   let adminUser: User;
   let regularUser: User;
+
+  const mockConfigService = {
+    get: jest.fn((key: string) => {
+      switch (key) {
+        case 'JWT_SECRET':
+          return JWT_SECRET;
+        case 'JWT_EXPIRATION_TIME':
+          return '24h';
+        default:
+          return null;
+      }
+    }),
+  };
+
+  const mockJwtService = {
+    sign: jest.fn((payload) => {
+      return jwt.sign(payload, JWT_SECRET, { expiresIn: '24h' });
+    }),
+  };
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [
         TestDatabaseModule,
-        TestJwtModule,
-        TestStorageModule,
-        CategoriesModule,
+        TypeOrmModule.forFeature([Category, User]),
+        PassportModule.register({ defaultStrategy: 'jwt' }),
+        JwtModule.register({
+          secret: JWT_SECRET,
+          signOptions: { expiresIn: '24h' },
+        }),
+      ],
+      controllers: [CategoriesController],
+      providers: [
+        CategoriesService,
+        {
+          provide: ConfigService,
+          useValue: mockConfigService,
+        },
+        {
+          provide: JwtService,
+          useValue: mockJwtService,
+        },
+        {
+          provide: UsersService,
+          useFactory: (userRepo: Repository<User>) => {
+            return new UsersService(userRepo);
+          },
+          inject: [getRepositoryToken(User)],
+        },
+        JwtStrategy,
+        JwtAuthGuard,
+        RolesGuard,
+        Reflector,
       ],
     }).compile();
 
     app = moduleFixture.createNestApplication();
-    categoryRepository = moduleFixture.get('CategoryRepository');
-    userRepository = moduleFixture.get('UserRepository');
+    const reflector = moduleFixture.get<Reflector>(Reflector);
+    const guard = moduleFixture.get<JwtAuthGuard>(JwtAuthGuard);
+    const rolesGuard = new RolesGuard(reflector);
+
+    app.useGlobalGuards(guard, rolesGuard);
     await app.init();
+
+    categoryRepository = moduleFixture.get<Repository<Category>>(
+      getRepositoryToken(Category),
+    );
+    userRepository = moduleFixture.get<Repository<User>>(
+      getRepositoryToken(User),
+    );
+    jwtService = moduleFixture.get<JwtService>(JwtService);
 
     // Créer les utilisateurs de test
     adminUser = await userRepository.save({
@@ -48,9 +116,13 @@ describe('CategoriesController (Integration)', () => {
     });
   });
 
+  beforeEach(async () => {
+    await categoryRepository.delete({});
+  });
+
   afterAll(async () => {
-    await categoryRepository.query('DELETE FROM categories');
-    await userRepository.query('DELETE FROM users');
+    await categoryRepository.delete({});
+    await userRepository.delete({});
     await app.close();
   });
 
@@ -61,9 +133,15 @@ describe('CategoriesController (Integration)', () => {
         description: 'Test Description',
       };
 
+      const token = jwtService.sign({
+        sub: adminUser.id,
+        email: adminUser.email,
+        role: adminUser.role,
+      });
+
       const response = await request(app.getHttpServer())
         .post('/categories')
-        .set('Authorization', `Bearer ${generateTestToken(adminUser)}`)
+        .set('Authorization', `Bearer ${token}`)
         .send(categoryDto)
         .expect(201);
 
@@ -73,10 +151,16 @@ describe('CategoriesController (Integration)', () => {
       });
     });
 
-    it('devrait rejeter la création par un utilisateur non-admin', () => {
+    it('devrait rejeter la création par un utilisateur non-admin', async () => {
+      const token = jwtService.sign({
+        sub: regularUser.id,
+        email: regularUser.email,
+        role: regularUser.role,
+      });
+
       return request(app.getHttpServer())
         .post('/categories')
-        .set('Authorization', `Bearer ${generateTestToken(regularUser)}`)
+        .set('Authorization', `Bearer ${token}`)
         .send({
           name: 'Test Category',
           description: 'Test Description',
@@ -110,8 +194,15 @@ describe('CategoriesController (Integration)', () => {
     });
 
     it('devrait retourner la liste des catégories', async () => {
+      const token = jwtService.sign({
+        sub: regularUser.id,
+        email: regularUser.email,
+        role: regularUser.role,
+      });
+
       const response = await request(app.getHttpServer())
         .get('/categories')
+        .set('Authorization', `Bearer ${token}`)
         .expect(200);
 
       expect(response.body).toHaveLength(2);
@@ -136,19 +227,31 @@ describe('CategoriesController (Integration)', () => {
         description: 'Updated Description',
       };
 
+      const token = jwtService.sign({
+        sub: adminUser.id,
+        email: adminUser.email,
+        role: adminUser.role,
+      });
+
       const response = await request(app.getHttpServer())
         .put(`/categories/${category.id}`)
-        .set('Authorization', `Bearer ${generateTestToken(adminUser)}`)
+        .set('Authorization', `Bearer ${token}`)
         .send(updateDto)
         .expect(200);
 
       expect(response.body).toMatchObject(updateDto);
     });
 
-    it('devrait rejeter la mise à jour par un utilisateur non-admin', () => {
+    it('devrait rejeter la mise à jour par un utilisateur non-admin', async () => {
+      const token = jwtService.sign({
+        sub: regularUser.id,
+        email: regularUser.email,
+        role: regularUser.role,
+      });
+
       return request(app.getHttpServer())
         .put(`/categories/${category.id}`)
-        .set('Authorization', `Bearer ${generateTestToken(regularUser)}`)
+        .set('Authorization', `Bearer ${token}`)
         .send({
           name: 'Updated Category',
           description: 'Updated Description',
@@ -178,9 +281,15 @@ describe('CategoriesController (Integration)', () => {
     });
 
     it('devrait supprimer une catégorie', async () => {
+      const token = jwtService.sign({
+        sub: adminUser.id,
+        email: adminUser.email,
+        role: adminUser.role,
+      });
+
       await request(app.getHttpServer())
         .delete(`/categories/${category.id}`)
-        .set('Authorization', `Bearer ${generateTestToken(adminUser)}`)
+        .set('Authorization', `Bearer ${token}`)
         .expect(200);
 
       const deletedCategory = await categoryRepository.findOne({
@@ -189,10 +298,16 @@ describe('CategoriesController (Integration)', () => {
       expect(deletedCategory).toBeNull();
     });
 
-    it('devrait rejeter la suppression par un utilisateur non-admin', () => {
+    it('devrait rejeter la suppression par un utilisateur non-admin', async () => {
+      const token = jwtService.sign({
+        sub: regularUser.id,
+        email: regularUser.email,
+        role: regularUser.role,
+      });
+
       return request(app.getHttpServer())
         .delete(`/categories/${category.id}`)
-        .set('Authorization', `Bearer ${generateTestToken(regularUser)}`)
+        .set('Authorization', `Bearer ${token}`)
         .expect(403);
     });
 
@@ -203,13 +318,3 @@ describe('CategoriesController (Integration)', () => {
     });
   });
 });
-
-function generateTestToken(user: User): string {
-  return `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.${Buffer.from(
-    JSON.stringify({
-      sub: user.id,
-      email: user.email,
-      role: user.role,
-    }),
-  ).toString('base64')}.test-signature`;
-}
