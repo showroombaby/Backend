@@ -3,7 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import * as sharp from 'sharp';
 import { Repository } from 'typeorm';
-import { StorageService } from '../../../modules/storage/services/storage.service';
+import { StorageService } from '../../storage/storage.service';
 import { ProductImage } from '../entities/product-image.entity';
 
 @Injectable()
@@ -32,14 +32,11 @@ export class ProductImagesService {
       const filename = `${Date.now()}-${file.originalname.replace(/\s+/g, '-')}`;
 
       // Sauvegarder l'image optimisée avec le nom de fichier généré
-      return this.storageService.uploadFile(
-        {
-          ...file,
-          buffer: optimizedBuffer,
-          filename, // Utiliser le nom de fichier généré
-        },
-        'products',
-      );
+      return this.storageService.uploadFile({
+        ...file,
+        buffer: optimizedBuffer,
+        originalname: filename,
+      });
     } catch (error) {
       this.logger.error(`Erreur lors de l'upload de l'image: ${error.message}`);
       throw new BadRequestException("Erreur lors du traitement de l'image");
@@ -53,7 +50,7 @@ export class ProductImagesService {
 
   async deleteImage(filename: string): Promise<void> {
     try {
-      await this.storageService.deleteFile(filename, 'products');
+      await this.storageService.deleteFile(filename);
     } catch (error) {
       this.logger.error(
         `Erreur lors de la suppression de l'image: ${error.message}`,
