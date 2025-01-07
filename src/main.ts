@@ -1,20 +1,27 @@
 import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import { NestExpressApplication } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import * as compression from 'compression';
 import helmet from 'helmet';
+import { join } from 'path';
 import { AppModule } from './app.module';
 import { GlobalExceptionFilter } from './modules/monitoring/filters/exception.filter';
 import { PerformanceInterceptor } from './modules/monitoring/interceptors/performance.interceptor';
 import { MonitoringService } from './modules/monitoring/services/monitoring.service';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
   // Configuration de la sécurité
   app.use(helmet());
   app.use(compression());
   app.enableCors();
+
+  // Configuration des fichiers statiques
+  app.useStaticAssets(join(__dirname, '..', 'uploads'), {
+    prefix: '/uploads',
+  });
 
   // Configuration de la validation
   app.useGlobalPipes(

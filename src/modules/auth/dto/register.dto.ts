@@ -1,14 +1,15 @@
 import { ApiProperty } from '@nestjs/swagger';
+import { Type } from 'class-transformer';
 import {
   IsEmail,
-  IsString,
-  MinLength,
-  IsOptional,
   IsNotEmpty,
-  ValidateNested,
+  IsOptional,
+  IsString,
   Length,
+  MinLength,
+  ValidateNested,
 } from 'class-validator';
-import { Type } from 'class-transformer';
+import { Role } from '../../users/enums/role.enum';
 
 export class AddressDto {
   @ApiProperty({
@@ -72,4 +73,13 @@ export class RegisterDto {
   @ValidateNested()
   @Type(() => AddressDto)
   address?: AddressDto;
+
+  @ApiProperty({
+    description: "Rôle de l'utilisateur",
+    enum: Role,
+    default: Role.USER,
+    required: false,
+  })
+  @IsOptional()
+  role?: Role;
 }

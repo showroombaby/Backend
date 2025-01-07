@@ -26,7 +26,7 @@ export class UsersService {
     try {
       const user = this.userRepository.create({
         ...registerDto,
-        role: Role.USER,
+        role: registerDto.role || Role.USER,
       });
 
       return await this.userRepository.save(user);
