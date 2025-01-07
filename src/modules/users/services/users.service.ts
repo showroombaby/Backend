@@ -87,7 +87,6 @@ export class UsersService {
     try {
       const user = await this.userRepository.findOne({
         where: { id: userId },
-        select: ['id', 'password'], // Sélectionner explicitement le mot de passe
       });
 
       if (!user) {

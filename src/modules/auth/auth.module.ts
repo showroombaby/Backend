@@ -14,8 +14,8 @@ import { JwtStrategy } from './strategies/jwt.strategy';
     EmailModule,
     JwtModule.register({
       global: true,
-      secret: 'test-secret-key',
-      signOptions: { expiresIn: '1h' },
+      secret: process.env.JWT_SECRET || 'your-secret-key',
+      signOptions: { expiresIn: process.env.JWT_EXPIRATION || '24h' },
     }),
   ],
   controllers: [AuthController],

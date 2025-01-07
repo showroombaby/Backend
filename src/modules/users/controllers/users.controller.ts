@@ -39,7 +39,8 @@ export class UsersController {
     description: 'Non authentifié',
   })
   async getProfile(@Req() req: any) {
-    return req.user;
+    const { password, ...userWithoutPassword } = req.user;
+    return userWithoutPassword;
   }
 
   @Put('profile')
