@@ -227,9 +227,9 @@ POST /favorites/{productId}
 Authorization: Bearer {token}
 
 Réponses :
-- 201: Produit ajouté aux favoris
-- 404: Produit non trouvé
-- 409: Produit déjà dans les favoris
+- � V 201: Produit ajouté aux favoris
+- ✅ V 404: Produit non trouvé
+- ✅ V 409: Produit déjà dans les favoris
 ```
 
 ### Retirer des favoris
@@ -239,8 +239,8 @@ DELETE /favorites/{productId}
 Authorization: Bearer {token}
 
 Réponses :
-- 204: Produit retiré des favoris
-- 404: Favori non trouvé
+- ✅ V 204: Produit retiré des favoris
+- ✅ V 404: Favori non trouvé
 ```
 
 ### Récupérer tous les favoris
@@ -249,7 +249,7 @@ Réponses :
 GET /favorites
 Authorization: Bearer {token}
 
-Réponse :
+Réponse : ✅ V
 [
   {
     "id": "uuid",
@@ -277,8 +277,8 @@ GET /favorites/{id}
 Authorization: Bearer {token}
 
 Réponses :
-- 200: Favori trouvé
-- 404: Favori non trouvé
+- ✅ V 200: Favori trouvé
+- ✅ V 404: Favori non trouvé
 ```
 
 ## 🔄 Notifications
@@ -289,7 +289,7 @@ Réponses :
 GET /notifications
 Authorization: Bearer {token}
 
-Réponse :
+Réponse : ✅ V
 {
   "data": [
     {
@@ -316,7 +316,7 @@ Réponse :
 GET /notifications/unread
 Authorization: Bearer {token}
 
-Réponse :
+Réponse : ✅ V
 [
   {
     "id": "uuid",
@@ -336,8 +336,8 @@ POST /notifications/{id}/read
 Authorization: Bearer {token}
 
 Réponses :
-- 200: Notification marquée comme lue
-- 404: Notification non trouvée
+- ✅ V 200: Notification marquée comme lue
+- ✅ V 404: Notification non trouvée
 ```
 
 ### Marquer toutes les notifications comme lues
@@ -347,7 +347,7 @@ POST /notifications/read/all
 Authorization: Bearer {token}
 
 Réponse :
-- 200: Toutes les notifications ont été marquées comme lues
+- ✅ V 200: Toutes les notifications ont été marquées comme lues
 ```
 
 ### Archiver une notification
@@ -357,8 +357,8 @@ POST /notifications/{id}/archive
 Authorization: Bearer {token}
 
 Réponses :
-- 200: Notification archivée
-- 404: Notification non trouvée
+- ✅ V 200: Notification archivée
+- ✅ V 404: Notification non trouvée
 ```
 
 ### Supprimer une notification
@@ -368,8 +368,8 @@ DELETE /notifications/{id}
 Authorization: Bearer {token}
 
 Réponses :
-- 200: Notification supprimée
-- 404: Notification non trouvée
+- ✅ V 200: Notification supprimée
+- ✅ V 404: Notification non trouvée
 ```
 
 ### Compter les notifications non lues
@@ -378,7 +378,7 @@ Réponses :
 GET /notifications/count/unread
 Authorization: Bearer {token}
 
-Réponse :
+Réponse : ✅ V
 {
   "count": number
 }
@@ -398,6 +398,10 @@ Content-Type: application/json
   "operation": "create" | "update" | "delete",
   "data": {}
 }
+
+Réponses :
+- ✅ V 201: Opération ajoutée à la file
+- ✅ V 400: Données invalides
 ```
 
 ### Traiter la file de synchronisation
@@ -405,6 +409,10 @@ Content-Type: application/json
 ```http
 POST /offline/sync/process
 Authorization: Bearer {token}
+
+Réponses :
+- ✅ V 200: File traitée avec succès
+- ✅ V 500: Erreur lors du traitement
 ```
 
 ### Récupérer les opérations échouées
@@ -412,6 +420,20 @@ Authorization: Bearer {token}
 ```http
 GET /offline/sync/failed
 Authorization: Bearer {token}
+
+Réponse : ✅ V
+[
+  {
+    "id": "uuid",
+    "entityType": "string",
+    "entityId": "string",
+    "operation": "string",
+    "status": "failed",
+    "attempts": number,
+    "lastError": "string",
+    "createdAt": "date"
+  }
+]
 ```
 
 ### Réessayer les opérations échouées
@@ -419,6 +441,10 @@ Authorization: Bearer {token}
 ```http
 POST /offline/sync/retry
 Authorization: Bearer {token}
+
+Réponses :
+- ✅ V 200: Opérations relancées
+- ✅ V 404: Aucune opération à relancer
 ```
 
 ### Nettoyer les opérations terminées
@@ -428,6 +454,10 @@ POST /offline/sync/clear
 Authorization: Bearer {token}
 Query Parameters:
   - olderThan: Date (optionnel)
+
+Réponses :
+- ✅ V 200: Opérations nettoyées
+- ✅ V 400: Date invalide
 ```
 
 ---
