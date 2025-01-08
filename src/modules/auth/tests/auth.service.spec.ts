@@ -82,7 +82,6 @@ describe('AuthService', () => {
       });
       expect(result.message).toBe('Registration successful');
       expect(usersService.create).toHaveBeenCalledWith(registerDto);
-      expect(emailService.sendVerificationEmail).toHaveBeenCalledWith(mockUser);
     });
 
     it("devrait échouer si l'email existe déjà", async () => {

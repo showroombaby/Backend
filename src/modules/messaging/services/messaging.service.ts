@@ -344,7 +344,7 @@ export class MessagingService {
     const [conversations, total] = await this.messageRepository
       .createQueryBuilder('message')
       .where(
-        '(message.senderId = :userId AND message.archivedBySender = true) OR (message.recipientId = :userId AND message.archivedByRecipient = true)',
+        '(message.sender_id = :userId AND message.archived_by_sender = true) OR (message.recipient_id = :userId AND message.archived_by_recipient = true)',
         { userId },
       )
       .orderBy('message.createdAt', 'DESC')

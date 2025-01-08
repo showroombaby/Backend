@@ -66,10 +66,10 @@ describe('UsersController (Integration)', () => {
 
     it('devrait échouer sans authentification', async () => {
       try {
-        await controller.getProfile({ user: undefined });
+        await controller.getProfile(undefined);
         fail('Should have thrown an error');
       } catch (error) {
-        expect(error).toBeInstanceOf(ReferenceError);
+        expect(error).toBeInstanceOf(TypeError);
       }
     });
   });

@@ -127,7 +127,7 @@ describe('MessagingService', () => {
       expect(typeof setArg.archivedByRecipient).toBe('function');
 
       expect(mockQueryBuilder.where).toHaveBeenCalledWith(
-        '("senderId" = :userId AND "recipientId" = :otherUserId) OR ("senderId" = :otherUserId AND "recipientId" = :userId)',
+        '("sender_id" = :userId AND "recipient_id" = :otherUserId) OR ("sender_id" = :otherUserId AND "recipient_id" = :userId)',
         { userId, otherUserId },
       );
     });
@@ -153,7 +153,7 @@ describe('MessagingService', () => {
       const result = await service.getArchivedMessages(userId, pagination);
 
       expect(mockQueryBuilder.where).toHaveBeenCalledWith(
-        '(message.senderId = :userId AND message.archivedBySender = true) OR (message.recipientId = :userId AND message.archivedByRecipient = true)',
+        '(message.sender_id = :userId AND message.archived_by_sender = true) OR (message.recipient_id = :userId AND message.archived_by_recipient = true)',
         { userId },
       );
       expect(result.meta.total).toBe(1);
@@ -196,7 +196,7 @@ describe('MessagingService', () => {
       expect(result.data[0]).toEqual(conversationWithDetails);
 
       expect(mockQueryBuilder.where).toHaveBeenCalledWith(
-        '(message.senderId = :userId AND message.archivedBySender = true) OR (message.recipientId = :userId AND message.archivedByRecipient = true)',
+        '(message.sender_id = :userId AND message.archived_by_sender = true) OR (message.recipient_id = :userId AND message.archived_by_recipient = true)',
         { userId },
       );
 

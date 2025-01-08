@@ -1,10 +1,10 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { HistoryService } from '../../services/history.service';
-import { History, ActionType } from '../../entities/history.entity';
-import { CreateHistoryDto } from '../../dto/create-history.dto';
 import { User } from '../../../users/entities/user.entity';
+import { CreateHistoryDto } from '../../dto/create-history.dto';
+import { ActionType, History } from '../../entities/history.entity';
+import { HistoryService } from '../../services/history.service';
 
 describe('HistoryService', () => {
   let service: HistoryService;
@@ -106,7 +106,9 @@ describe('HistoryService', () => {
       const error = new Error('Save failed');
       mockRepository.save.mockRejectedValue(error);
 
-      await expect(service.create(mockUser as User, createHistoryDto)).rejects.toThrow(error);
+      await expect(
+        service.create(mockUser as User, createHistoryDto),
+      ).rejects.toThrow(error);
     });
   });
 
@@ -128,10 +130,22 @@ describe('HistoryService', () => {
       const result = await service.findAll(options);
 
       expect(result).toEqual(mockResult);
-      expect(mockQueryBuilder.leftJoinAndSelect).toHaveBeenCalledWith('history.user', 'user');
-      expect(mockQueryBuilder.andWhere).toHaveBeenCalledWith('history.userId = :userId', { userId: mockUser.id });
-      expect(mockQueryBuilder.andWhere).toHaveBeenCalledWith('history.entityType = :entityType', { entityType: 'product' });
-      expect(mockQueryBuilder.andWhere).toHaveBeenCalledWith('history.actionType = :actionType', { actionType: ActionType.CREATE });
+      expect(mockQueryBuilder.leftJoinAndSelect).toHaveBeenCalledWith(
+        'history.user',
+        'user',
+      );
+      expect(mockQueryBuilder.andWhere).toHaveBeenCalledWith(
+        'history.user_id = :userId',
+        { userId: mockUser.id },
+      );
+      expect(mockQueryBuilder.andWhere).toHaveBeenCalledWith(
+        'history.entity_type = :entityType',
+        { entityType: 'product' },
+      );
+      expect(mockQueryBuilder.andWhere).toHaveBeenCalledWith(
+        'history.action_type = :actionType',
+        { actionType: ActionType.CREATE },
+      );
     });
   });
 
@@ -174,7 +188,10 @@ describe('HistoryService', () => {
       const result = await service.findByUser(mockUser.id, options);
 
       expect(result).toEqual(mockResult);
-      expect(mockQueryBuilder.andWhere).toHaveBeenCalledWith('history.userId = :userId', { userId: mockUser.id });
+      expect(mockQueryBuilder.andWhere).toHaveBeenCalledWith(
+        'history.user_id = :userId',
+        { userId: mockUser.id },
+      );
     });
   });
 
@@ -209,4 +226,4 @@ describe('HistoryService', () => {
       expect(mockQueryBuilder.execute).toHaveBeenCalled();
     });
   });
-}); 
+});
