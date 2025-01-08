@@ -10,6 +10,7 @@ import { AuthModule } from './modules/auth/auth.module';
 import { EmailModule } from './modules/email/email.module';
 import { MessagingModule } from './modules/messaging/messaging.module';
 import { MonitoringModule } from './modules/monitoring/monitoring.module';
+import { NotificationsModule } from './modules/notifications/notifications.module';
 import { OfflineModule } from './modules/offline/offline.module';
 import { ProductsModule } from './modules/products/products.module';
 import { StorageModule } from './modules/storage/storage.module';
@@ -67,6 +68,7 @@ import { UsersModule } from './modules/users/users.module';
     MessagingModule,
     MonitoringModule,
     OfflineModule,
+    NotificationsModule,
   ],
   controllers: [],
   providers: [],

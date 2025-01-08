@@ -1,6 +1,8 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { AuthModule } from '../auth/auth.module';
+import { UsersModule } from '../users/users.module';
 import { DeviceTokensController } from './controllers/device-tokens.controller';
 import { NotificationsController } from './controllers/notifications.controller';
 import { DeviceToken } from './entities/device-token.entity';
@@ -14,6 +16,8 @@ import { PushNotificationsService } from './services/push-notifications.service'
   imports: [
     TypeOrmModule.forFeature([Notification, DeviceToken]),
     ConfigModule,
+    AuthModule,
+    UsersModule,
   ],
   controllers: [NotificationsController, DeviceTokensController],
   providers: [

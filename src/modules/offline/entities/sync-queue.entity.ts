@@ -36,8 +36,8 @@ export class SyncQueue {
   })
   operation: SyncOperation;
 
-  @Column({ type: 'jsonb' })
-  data: any;
+  @Column('json')
+  data: Record<string, any>;
 
   @Column({
     type: 'enum',

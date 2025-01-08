@@ -14,7 +14,10 @@ export class HistoryService {
     private historyRepository: Repository<History>,
   ) {}
 
-  async create(user: User, createHistoryDto: CreateHistoryDto): Promise<History> {
+  async create(
+    user: User,
+    createHistoryDto: CreateHistoryDto,
+  ): Promise<History> {
     try {
       const history = this.historyRepository.create({
         userId: user.id,
@@ -23,7 +26,10 @@ export class HistoryService {
 
       return await this.historyRepository.save(history);
     } catch (error) {
-      this.logger.error(`Error creating history entry: ${error.message}`, error.stack);
+      this.logger.error(
+        `⚠️ Error creating history entry: ${error.message}`,
+        error.stack,
+      );
       throw error;
     }
   }
@@ -38,30 +44,40 @@ export class HistoryService {
     offset?: number;
   }): Promise<{ items: History[]; total: number }> {
     try {
-      const query = this.historyRepository.createQueryBuilder('history')
+      const query = this.historyRepository
+        .createQueryBuilder('history')
         .leftJoinAndSelect('history.user', 'user');
 
       if (options.userId) {
-        query.andWhere('history.userId = :userId', { userId: options.userId });
+        query.andWhere('history.user_id = :userId', { userId: options.userId });
       }
 
       if (options.entityType) {
-        query.andWhere('history.entityType = :entityType', { entityType: options.entityType });
+        query.andWhere('history.entity_type = :entityType', {
+          entityType: options.entityType,
+        });
       }
 
       if (options.actionType) {
-        query.andWhere('history.actionType = :actionType', { actionType: options.actionType });
+        query.andWhere('history.action_type = :actionType', {
+          actionType: options.actionType,
+        });
       }
 
       if (options.startDate) {
-        query.andWhere('history.createdAt >= :startDate', { startDate: options.startDate });
+        query.andWhere('history.created_at >= :startDate', {
+          startDate: options.startDate,
+        });
       }
 
       if (options.endDate) {
-        query.andWhere('history.createdAt <= :endDate', { endDate: options.endDate });
+        query.andWhere('history.created_at <= :endDate', {
+          endDate: options.endDate,
+        });
       }
 
-      query.orderBy('history.createdAt', 'DESC')
+      query
+        .orderBy('history.createdAt', 'DESC')
         .skip(options.offset || 0)
         .take(options.limit || 10);
 
@@ -98,14 +114,17 @@ export class HistoryService {
     }
   }
 
-  async findByUser(userId: string, options: {
-    entityType?: string;
-    actionType?: ActionType;
-    startDate?: Date;
-    endDate?: Date;
-    limit?: number;
-    offset?: number;
-  }): Promise<{ items: History[]; total: number }> {
+  async findByUser(
+    userId: string,
+    options: {
+      entityType?: string;
+      actionType?: ActionType;
+      startDate?: Date;
+      endDate?: Date;
+      limit?: number;
+      offset?: number;
+    },
+  ): Promise<{ items: History[]; total: number }> {
     return this.findAll({ ...options, userId });
   }
 
@@ -135,11 +154,14 @@ export class HistoryService {
       await this.historyRepository
         .createQueryBuilder()
         .delete()
-        .where('createdAt <= :date', { date })
+        .where('created_at <= :date', { date })
         .execute();
     } catch (error) {
-      this.logger.error(`Error deleting old history entries: ${error.message}`, error.stack);
+      this.logger.error(
+        `⚠️ Error deleting old history entries: ${error.message}`,
+        error.stack,
+      );
       throw error;
     }
   }
-} 
+}

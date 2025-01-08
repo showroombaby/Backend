@@ -1,4 +1,9 @@
-import { Injectable, NotFoundException, ConflictException, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ConflictException,
+  Logger,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ProductFavorite } from '../entities/product-favorite.entity';
@@ -18,17 +23,16 @@ export class ProductFavoritesService {
 
   async addToFavorites(userId: string, productId: string): Promise<void> {
     try {
-      const product = await this.productRepository.findOne({ 
+      const product = await this.productRepository.findOne({
         where: { id: productId },
-        relations: ['images']
+        relations: ['images'],
       });
-      
       if (!product) {
         throw new NotFoundException('Product not found');
       }
 
       const existingFavorite = await this.favoriteRepository.findOne({
-        where: { userId, productId }
+        where: { userId, productId },
       });
 
       if (existingFavorite) {
@@ -42,7 +46,10 @@ export class ProductFavoritesService {
 
       await this.favoriteRepository.save(favorite);
     } catch (error) {
-      this.logger.error(`Error adding product ${productId} to favorites for user ${userId}:`, error);
+      this.logger.error(
+        `⚠️ Error adding product ${productId} to favorites for user ${userId}:`,
+        error,
+      );
       throw error;
     }
   }
@@ -59,7 +66,10 @@ export class ProductFavoritesService {
 
       await this.favoriteRepository.remove(favorite);
     } catch (error) {
-      this.logger.error(`Error removing product ${productId} from favorites for user ${userId}:`, error);
+      this.logger.error(
+        `⚠️ Error removing product ${productId} from favorites for user ${userId}:`,
+        error,
+      );
       throw error;
     }
   }
@@ -71,12 +81,18 @@ export class ProductFavoritesService {
       });
       return !!favorite;
     } catch (error) {
-      this.logger.error(`Error checking favorite status for product ${productId} and user ${userId}:`, error);
+      this.logger.error(
+        `⚠️ Error checking favorite status for product ${productId} and user ${userId}:`,
+        error,
+      );
       throw error;
     }
   }
 
-  async getFavorite(id: string, userId: string): Promise<FavoriteResponseDto | null> {
+  async getFavorite(
+    id: string,
+    userId: string,
+  ): Promise<FavoriteResponseDto | null> {
     try {
       const favorite = await this.favoriteRepository.findOne({
         where: { id, userId },
@@ -96,11 +112,15 @@ export class ProductFavoritesService {
           id: favorite.product.id,
           title: favorite.product.title,
           price: Number(favorite.product.price),
-          images: favorite.product.images?.map(image => ({ url: image.url })) || []
-        }
+          images:
+            favorite.product.images?.map((image) => ({ url: image.url })) || [],
+        },
       };
     } catch (error) {
-      this.logger.error(`Error getting favorite ${id} for user ${userId}:`, error);
+      this.logger.error(
+        `⚠️ Error getting favorite ${id} for user ${userId}:`,
+        error,
+      );
       throw error;
     }
   }
@@ -112,7 +132,7 @@ export class ProductFavoritesService {
         relations: ['product', 'product.images'],
       });
 
-      return favorites.map(favorite => ({
+      return favorites.map((favorite) => ({
         id: favorite.id,
         userId: favorite.userId,
         productId: favorite.productId,
@@ -121,12 +141,16 @@ export class ProductFavoritesService {
           id: favorite.product.id,
           title: favorite.product.title,
           price: Number(favorite.product.price),
-          images: favorite.product.images?.map(image => ({ url: image.url })) || []
-        }
+          images:
+            favorite.product.images?.map((image) => ({ url: image.url })) || [],
+        },
       }));
     } catch (error) {
-      this.logger.error(`Error getting favorites for user ${userId}:`, error);
+      this.logger.error(
+        `⚠️ Error getting favorites for user ${userId}:`,
+        error,
+      );
       throw error;
     }
   }
-} 
+}

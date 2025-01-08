@@ -1,5 +1,5 @@
-import { Type } from 'class-transformer';
-import { IsEnum, IsNotEmpty, IsString, ValidateNested } from 'class-validator';
+import { Transform } from 'class-transformer';
+import { IsEnum, IsNotEmpty, IsObject, IsString } from 'class-validator';
 import { SyncOperation } from '../enums/sync-operation.enum';
 
 export class QueueOperationDto {
@@ -15,7 +15,16 @@ export class QueueOperationDto {
   @IsNotEmpty()
   operation: SyncOperation;
 
-  @ValidateNested()
-  @Type(() => Object)
-  data: any;
+  @IsObject()
+  @Transform(({ value }) => {
+    if (typeof value === 'string') {
+      try {
+        return JSON.parse(value);
+      } catch {
+        return value;
+      }
+    }
+    return value;
+  })
+  data: Record<string, any>;
 }

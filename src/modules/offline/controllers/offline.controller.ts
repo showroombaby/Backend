@@ -6,6 +6,9 @@ import {
   Query,
   Req,
   UseGuards,
+  Logger,
+  UsePipes,
+  ValidationPipe,
 } from '@nestjs/common';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
@@ -16,6 +19,8 @@ import { SyncService } from '../services/sync.service';
 @UseGuards(JwtAuthGuard)
 @Controller('offline')
 export class OfflineController {
+  private readonly logger = new Logger(OfflineController.name);
+
   constructor(private readonly syncService: SyncService) {}
 
   @Post('sync')
@@ -26,14 +31,29 @@ export class OfflineController {
     status: 201,
     description: "L'opération a été ajoutée à la file de synchronisation",
   })
+  @UsePipes(new ValidationPipe({ transform: true }))
   async queueOperation(@Body() operationDto: QueueOperationDto, @Req() req) {
-    return await this.syncService.queueOperation(
+    this.logger.debug(
+      `Données reçues dans le contrôleur: ${JSON.stringify(operationDto)}`,
+    );
+
+    // Vérifier que les données ne sont pas vides
+    if (!operationDto.data || Object.keys(operationDto.data).length === 0) {
+      throw new Error('Les données ne peuvent pas être vides');
+    }
+
+    // Utiliser directement les données reçues
+    const result = await this.syncService.queueOperation(
       req.user.id,
       operationDto.entityType,
       operationDto.entityId,
       operationDto.operation,
       operationDto.data,
     );
+
+    this.logger.debug(`Résultat de l'opération: ${JSON.stringify(result)}`);
+
+    return result;
   }
 
   @Post('sync/process')

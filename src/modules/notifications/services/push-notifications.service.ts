@@ -1,20 +1,39 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as apn from 'apn';
 
 @Injectable()
 export class PushNotificationsService {
-  private provider: apn.Provider;
+  private provider: apn.Provider | null = null;
+  private readonly logger = new Logger(PushNotificationsService.name);
 
   constructor(private readonly configService: ConfigService) {
-    this.provider = new apn.Provider({
-      token: {
-        key: this.configService.get<string>('APPLE_PUSH_KEY'),
-        keyId: this.configService.get<string>('APPLE_PUSH_KEY_ID'),
-        teamId: this.configService.get<string>('APPLE_TEAM_ID'),
-      },
-      production: this.configService.get<string>('NODE_ENV') === 'production',
-    });
+    const appleKey = this.configService.get<string>('APPLE_PUSH_KEY');
+    const appleKeyId = this.configService.get<string>('APPLE_PUSH_KEY_ID');
+    const appleTeamId = this.configService.get<string>('APPLE_TEAM_ID');
+
+    if (appleKey && appleKeyId && appleTeamId) {
+      try {
+        this.provider = new apn.Provider({
+          token: {
+            key: appleKey,
+            keyId: appleKeyId,
+            teamId: appleTeamId,
+          },
+          production:
+            this.configService.get<string>('NODE_ENV') === 'production',
+        });
+      } catch (error) {
+        this.logger.warn(
+          '⚠️ Failed to initialize push notifications provider:',
+          error.message,
+        );
+      }
+    } else {
+      this.logger.warn(
+        '⚠️ Push notifications are disabled: missing Apple configuration',
+      );
+    }
   }
 
   async sendNotification(
@@ -23,6 +42,11 @@ export class PushNotificationsService {
     body: string,
     data?: any,
   ) {
+    if (!this.provider) {
+      this.logger.warn('Push notifications are disabled');
+      return;
+    }
+
     const notification = new apn.Notification();
     notification.expiry = Math.floor(Date.now() / 1000) + 3600; // Expire dans 1 heure
     notification.badge = 1;
@@ -43,7 +67,8 @@ export class PushNotificationsService {
       }
       return result;
     } catch (error) {
-      throw new Error(`Push notification error: ${error.message}`);
+      this.logger.error(`Push notification error: ${error.message}`);
+      throw error;
     }
   }
 
@@ -53,6 +78,11 @@ export class PushNotificationsService {
     body: string,
     data?: any,
   ) {
+    if (!this.provider) {
+      this.logger.warn('Push notifications are disabled');
+      return;
+    }
+
     return Promise.all(
       deviceTokens.map((token) =>
         this.sendNotification(token, title, body, data),

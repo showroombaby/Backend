@@ -128,7 +128,7 @@ export class MessagingService {
     const [messages, total] = await this.messageRepository
       .createQueryBuilder('message')
       .where(
-        '(message.senderId = :userId AND message.recipientId = :otherUserId) OR (message.senderId = :otherUserId AND message.recipientId = :userId)',
+        '(message.sender_id = :userId AND message.recipient_id = :otherUserId) OR (message.sender_id = :otherUserId AND message.recipient_id = :userId)',
         { userId, otherUserId },
       )
       .orderBy('message.createdAt', 'ASC')
@@ -147,9 +147,13 @@ export class MessagingService {
   }
 
   async markMessageAsRead(messageId: string, userId: string): Promise<Message> {
-    const message = await this.messageRepository.findOne({
-      where: { id: messageId, recipientId: userId },
-    });
+    const message = await this.messageRepository
+      .createQueryBuilder('message')
+      .where('message.id = :messageId AND message.recipient_id = :userId', {
+        messageId,
+        userId,
+      })
+      .getOne();
 
     if (!message) {
       throw new NotFoundException('Message non trouvé');
@@ -168,7 +172,7 @@ export class MessagingService {
       .update(Message)
       .set({ read: true })
       .where(
-        'recipientId = :userId AND senderId = :otherUserId AND read = false',
+        'recipient_id = :userId AND sender_id = :otherUserId AND read = false',
         {
           userId,
           otherUserId,
@@ -247,13 +251,16 @@ export class MessagingService {
       .update(Message)
       .set({
         archivedBySender: () =>
-          'CASE WHEN "senderId" = :userId THEN true ELSE "archivedBySender" END',
+          'CASE WHEN "sender_id" = :userId THEN true ELSE "archived_by_sender" END',
         archivedByRecipient: () =>
-          'CASE WHEN "recipientId" = :userId THEN true ELSE "archivedByRecipient" END',
+          'CASE WHEN "recipient_id" = :userId THEN true ELSE "archived_by_recipient" END',
       })
       .where(
-        '("senderId" = :userId AND "recipientId" = :otherUserId) OR ("senderId" = :otherUserId AND "recipientId" = :userId)',
-        { userId, otherUserId },
+        '("sender_id" = :userId AND "recipient_id" = :otherUserId) OR ("sender_id" = :otherUserId AND "recipient_id" = :userId)',
+        {
+          userId,
+          otherUserId,
+        },
       )
       .execute();
   }
@@ -287,12 +294,12 @@ export class MessagingService {
       .update(Message)
       .set({
         archivedBySender: () =>
-          'CASE WHEN "senderId" = :userId THEN false ELSE "archivedBySender" END',
+          'CASE WHEN "sender_id" = :userId THEN false ELSE "archived_by_sender" END',
         archivedByRecipient: () =>
-          'CASE WHEN "recipientId" = :userId THEN false ELSE "archivedByRecipient" END',
+          'CASE WHEN "recipient_id" = :userId THEN false ELSE "archived_by_recipient" END',
       })
       .where(
-        '("senderId" = :userId AND "recipientId" = :otherUserId) OR ("senderId" = :otherUserId AND "recipientId" = :userId)',
+        '("sender_id" = :userId AND "recipient_id" = :otherUserId) OR ("sender_id" = :otherUserId AND "recipient_id" = :userId)',
         { userId, otherUserId },
       )
       .execute();
@@ -307,7 +314,7 @@ export class MessagingService {
     const [messages, total] = await this.messageRepository
       .createQueryBuilder('message')
       .where(
-        '(message.senderId = :userId AND message.archivedBySender = true) OR (message.recipientId = :userId AND message.archivedByRecipient = true)',
+        '(message.sender_id = :userId AND message.archived_by_sender = true) OR (message.recipient_id = :userId AND message.archived_by_recipient = true)',
         { userId },
       )
       .orderBy('message.createdAt', 'DESC')
