@@ -62,32 +62,17 @@ export class SyncService {
       await this.validateQueueData(entityType, operation, data);
 
       // Créer l'objet de synchronisation
-      const query = `
-        INSERT INTO sync_queue (
-          "userId",
-          "entityType",
-          "entityId",
-          "operation",
-          "data",
-          "status",
-          "attempts"
-        )
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
-        RETURNING *;
-      `;
-
-      const values = [
+      const syncItem = this.syncQueueRepository.create({
         userId,
         entityType,
         entityId,
         operation,
-        JSON.stringify(data),
-        'pending',
-        0,
-      ];
+        data,
+        status: 'pending',
+        attempts: 0,
+      });
 
-      const result = await this.syncQueueRepository.query(query, values);
-      const savedItem = result[0];
+      const savedItem = await this.syncQueueRepository.save(syncItem);
 
       this.logger.debug(`SyncItem sauvegardé: ${JSON.stringify(savedItem)}`);
 
@@ -114,6 +99,9 @@ export class SyncService {
               'Les données du message sont invalides: contenu et destinataire requis',
             );
           }
+        } else if (operation === SyncOperation.DELETE) {
+          // Pour la suppression, aucune donnée supplémentaire n'est requise
+          return;
         }
         break;
       case 'notification':
@@ -272,6 +260,12 @@ export class SyncService {
           'Données de message invalides: contenu et destinataire requis',
         );
       }
+      // Empêcher l'envoi de messages à soi-même
+      if (data.recipientId === item.userId) {
+        throw new Error(
+          'Vous ne pouvez pas vous envoyer un message à vous-même',
+        );
+      }
     }
   }
 
@@ -290,7 +284,12 @@ export class SyncService {
     switch (item.entityType) {
       case 'message':
         const messageDto = data as CreateMessageDto;
-        await this.messagingService.createMessage(item.userId, messageDto);
+        const createdMessage = await this.messagingService.createMessage(
+          item.userId,
+          messageDto,
+        );
+        // Mettre à jour l'entityId avec l'ID réel du message créé
+        await this.updateEntityId(item, createdMessage.id);
         break;
       case 'notification':
         const notificationDto = data as CreateNotificationDto;
@@ -299,6 +298,11 @@ export class SyncService {
       default:
         throw new Error(`Type d'entité non supporté: ${item.entityType}`);
     }
+  }
+
+  private async updateEntityId(item: SyncQueue, newEntityId: string) {
+    item.entityId = newEntityId;
+    await this.syncQueueRepository.save(item);
   }
 
   private async processUpdate(item: SyncQueue, data: any) {
@@ -346,6 +350,45 @@ export class SyncService {
     });
   }
 
+  async getPendingOperationsCount(userId: string) {
+    return await this.syncQueueRepository.count({
+      where: {
+        userId,
+        status: 'pending',
+      },
+    });
+  }
+
+  async getFailedOperationsCount(userId: string) {
+    return await this.syncQueueRepository.count({
+      where: {
+        userId,
+        status: 'failed',
+      },
+    });
+  }
+
+  async getCompletedOperationsCount(userId: string) {
+    return await this.syncQueueRepository.count({
+      where: {
+        userId,
+        status: 'completed',
+      },
+    });
+  }
+
+  async getPendingOperations(userId: string) {
+    return await this.syncQueueRepository.find({
+      where: {
+        userId,
+        status: 'pending',
+      },
+      order: {
+        createdAt: 'ASC',
+      },
+    });
+  }
+
   async retryFailedOperations(userId: string) {
     const failedItems = await this.getFailedOperations(userId);
     for (const item of failedItems) {
@@ -364,7 +407,7 @@ export class SyncService {
       .andWhere('status = :status', { status: 'completed' });
 
     if (olderThan) {
-      query.andWhere('createdAt < :olderThan', { olderThan });
+      query.andWhere('"created_at" < :olderThan', { olderThan });
     }
 
     await query.execute();

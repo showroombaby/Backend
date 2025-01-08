@@ -149,10 +149,13 @@ export class MessagingService {
   async markMessageAsRead(messageId: string, userId: string): Promise<Message> {
     const message = await this.messageRepository
       .createQueryBuilder('message')
-      .where('message.id = :messageId AND message.recipient_id = :userId', {
-        messageId,
-        userId,
-      })
+      .where(
+        'message.id = :messageId AND (message.recipient_id = :userId OR message.sender_id = :userId)',
+        {
+          messageId,
+          userId,
+        },
+      )
       .getOne();
 
     if (!message) {

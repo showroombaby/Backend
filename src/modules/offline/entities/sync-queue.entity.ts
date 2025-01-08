@@ -17,7 +17,7 @@ export class SyncQueue {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column()
+  @Column({ name: 'user_id' })
   userId: string;
 
   @ManyToOne(() => User)
@@ -52,12 +52,12 @@ export class SyncQueue {
   @Column({ nullable: true })
   lastError: string;
 
-  @CreateDateColumn()
+  @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 
-  @UpdateDateColumn()
+  @UpdateDateColumn({ name: 'updated_at' })
   updatedAt: Date;
 
-  @Column({ nullable: true })
+  @Column({ nullable: true, name: 'synced_at' })
   syncedAt: Date;
 }

@@ -77,6 +77,41 @@ export class OfflineController {
     return await this.syncService.getFailedOperations(req.user.id);
   }
 
+  @Get('sync/status')
+  @ApiOperation({ summary: 'Obtenir le statut de la synchronisation' })
+  @ApiResponse({
+    status: 200,
+    description: 'Statut de la synchronisation',
+  })
+  async getSyncStatus(@Req() req) {
+    const pendingCount = await this.syncService.getPendingOperationsCount(
+      req.user.id,
+    );
+    const failedCount = await this.syncService.getFailedOperationsCount(
+      req.user.id,
+    );
+    const completedCount = await this.syncService.getCompletedOperationsCount(
+      req.user.id,
+    );
+
+    return {
+      pending: pendingCount,
+      failed: failedCount,
+      completed: completedCount,
+      lastSync: new Date().toISOString(),
+    };
+  }
+
+  @Get('sync/pending')
+  @ApiOperation({ summary: 'Obtenir les opérations en attente' })
+  @ApiResponse({
+    status: 200,
+    description: 'Liste des opérations en attente',
+  })
+  async getPendingOperations(@Req() req) {
+    return await this.syncService.getPendingOperations(req.user.id);
+  }
+
   @Post('sync/retry')
   @ApiOperation({ summary: 'Réessayer les opérations échouées' })
   @ApiResponse({
