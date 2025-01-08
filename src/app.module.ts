@@ -1,6 +1,7 @@
 import { CacheModule } from '@nestjs/cache-manager';
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
+import { PassportModule } from '@nestjs/passport';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import * as redisStore from 'cache-manager-redis-store';
 import databaseConfig from './config/database.config';
@@ -20,7 +21,12 @@ import { UsersModule } from './modules/users/users.module';
       isGlobal: true,
       load: [databaseConfig],
       validationSchema,
+      envFilePath: '.env',
+      expandVariables: true,
+      cache: true,
     }),
+
+    PassportModule.register({ defaultStrategy: 'jwt' }),
 
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],

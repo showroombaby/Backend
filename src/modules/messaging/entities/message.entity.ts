@@ -22,15 +22,15 @@ export class Message {
   content: string;
 
   @ApiProperty({ example: '123e4567-e89b-12d3-a456-426614174000' })
-  @Column('uuid')
+  @Column('uuid', { name: 'sender_id' })
   senderId: string;
 
   @ApiProperty({ example: '123e4567-e89b-12d3-a456-426614174000' })
-  @Column('uuid')
+  @Column('uuid', { name: 'recipient_id' })
   recipientId: string;
 
   @ApiProperty({ example: '123e4567-e89b-12d3-a456-426614174000' })
-  @Column('uuid', { nullable: true })
+  @Column('uuid', { name: 'product_id', nullable: true })
   productId: string;
 
   @ApiProperty({ example: false })
@@ -38,30 +38,30 @@ export class Message {
   read: boolean;
 
   @ApiProperty({ example: false })
-  @Column('boolean', { default: false })
+  @Column('boolean', { name: 'archived_by_sender', default: false })
   archivedBySender: boolean;
 
   @ApiProperty({ example: false })
-  @Column('boolean', { default: false })
+  @Column('boolean', { name: 'archived_by_recipient', default: false })
   archivedByRecipient: boolean;
 
   @ApiProperty()
-  @CreateDateColumn()
+  @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 
   @ApiProperty()
-  @UpdateDateColumn()
+  @UpdateDateColumn({ name: 'updated_at' })
   updatedAt: Date;
 
   @ManyToOne(() => User)
-  @JoinColumn({ name: 'senderId' })
+  @JoinColumn({ name: 'sender_id' })
   sender: User;
 
   @ManyToOne(() => User)
-  @JoinColumn({ name: 'recipientId' })
+  @JoinColumn({ name: 'recipient_id' })
   recipient: User;
 
   @ManyToOne(() => Product, { nullable: true })
-  @JoinColumn({ name: 'productId' })
+  @JoinColumn({ name: 'product_id' })
   product: Product;
 }
