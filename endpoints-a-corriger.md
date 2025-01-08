@@ -1,29 +1,5 @@
 # Endpoints à Corriger
 
-## 💬 Messagerie
-
-### Envoi d'un message
-
-```http
-POST /messages
-Status: ❌ (400 Bad Request)
-
-Erreur rencontrée :
-- Endpoint retourne une erreur 400
-- Nécessite une vérification du format de la requête
-```
-
-### Récupération des conversations
-
-```http
-GET /messages/conversations
-Status: ❌ (500 Internal Server Error)
-
-Erreur rencontrée :
-- Erreur serveur interne
-- Nécessite une vérification de la logique de récupération des conversations
-```
-
 ## ⭐ Favoris
 
 ### Ajouter aux favoris
@@ -55,7 +31,7 @@ Erreur rencontrée :
 
 ### Synchronisation des données
 
-````http
+```http
 POST /offline/sync
 Status: ❌ (400 Bad Request)
 
@@ -73,22 +49,18 @@ Format attendu :
   "entityId": "string",
   "operation": "create" | "update" | "delete"
 }
-````
+```
 
 ## 📝 Notes pour la correction
 
 1. **Priorité Haute**
-
    - Correction des favoris (impact direct sur l'expérience utilisateur)
-   - Correction de la messagerie (fonctionnalité clé)
 
 2. **Priorité Moyenne**
-
    - Implémentation des notifications
    - Correction de la synchronisation hors ligne
 
 3. **Points d'attention**
-
    - Vérifier la gestion des UUID dans TypeORM
    - Valider les DTOs pour tous les endpoints
    - S'assurer que tous les modules sont correctement importés

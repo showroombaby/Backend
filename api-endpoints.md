@@ -59,6 +59,56 @@ Content-Type: application/json
 }
 ```
 
+## 📦 Messagerie
+
+### Envoyer un message
+
+```http
+POST /messages
+Authorization: Bearer {token}
+Content-Type: application/json
+{
+  "content": "string",
+  "recipientId": "uuid",
+  "productId": "uuid" (optionnel)
+}
+```
+
+### Récupérer les conversations
+
+```http
+GET /messages/conversations
+Authorization: Bearer {token}
+```
+
+### Récupérer une conversation
+
+```http
+GET /messages/conversation/{userId}
+Authorization: Bearer {token}
+```
+
+### Marquer un message comme lu
+
+```http
+POST /messages/{messageId}/read
+Authorization: Bearer {token}
+```
+
+### Archiver une conversation
+
+```http
+POST /messages/conversation/{userId}/archive
+Authorization: Bearer {token}
+```
+
+### Désarchiver une conversation
+
+```http
+POST /messages/conversation/{userId}/unarchive
+Authorization: Bearer {token}
+```
+
 ## 📦 Produits
 
 ### Créer un produit
