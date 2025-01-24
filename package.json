@@ -1,7 +1,7 @@
 {
   "name": "showroom-baby",
   "version": "0.0.1",
-  "description": "",
+  "description": "API backend pour l'application Baby, développée avec NestJS.",
   "author": "",
   "private": true,
   "license": "UNLICENSED",
@@ -96,5 +96,11 @@
     "ts-node": "^10.9.1",
     "tsconfig-paths": "^4.2.0",
     "typescript": "^5.1.3"
-  }
+  },
+  "main": ".eslintrc.js",
+  "directories": {
+    "doc": "docs",
+    "test": "test"
+  },
+  "keywords": []
 }

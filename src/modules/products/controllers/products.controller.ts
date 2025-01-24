@@ -92,6 +92,12 @@ export class ProductsController {
       categoryId: createProductDto.categoryId,
       status: createProductDto.status,
       userId: createProductDto.userId,
+      latitude: createProductDto.latitude,
+      longitude: createProductDto.longitude,
+      address: createProductDto.address,
+      city: createProductDto.city,
+      zipCode: createProductDto.zipCode,
+      phone: createProductDto.phone,
     };
     return this.productsService.create(productData, files || [], req.user.id);
   }
@@ -105,6 +111,18 @@ export class ProductsController {
   })
   findAll(@Query() searchProductsDto: SearchProductsDto) {
     return this.productsService.findAll(searchProductsDto);
+  }
+
+  @Get('trending')
+  @ApiOperation({ summary: 'Récupérer les produits tendances' })
+  @ApiResponse({
+    status: 200,
+    description: 'Liste des produits tendances',
+    type: [Product],
+  })
+  async getTrending(@Query('limit') limit?: string) {
+    const parsedLimit = limit ? parseInt(limit, 10) : 10;
+    return this.productsService.getTrendingProducts(parsedLimit);
   }
 
   @Get(':id')

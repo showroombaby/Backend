@@ -5,6 +5,8 @@ import {
   IsEnum,
   IsUUID,
   IsOptional,
+  IsLatitude,
+  IsLongitude,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ProductCondition } from '../enums/product-condition.enum';
@@ -42,4 +44,32 @@ export class CreateProductDto {
 
   @IsOptional()
   images?: Express.Multer.File[];
+
+  @IsOptional()
+  @IsString()
+  city?: string;
+
+  @IsOptional()
+  @IsString()
+  address?: string;
+
+  @IsOptional()
+  @IsString()
+  zipCode?: string;
+
+  @IsOptional()
+  @IsString()
+  phone?: string;
+
+  @IsOptional()
+  @IsNumber()
+  @Type(() => Number)
+  @IsLatitude()
+  latitude?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Type(() => Number)
+  @IsLongitude()
+  longitude?: number;
 }

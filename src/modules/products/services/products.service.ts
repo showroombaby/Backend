@@ -329,6 +329,55 @@ export class ProductsService {
     }
   }
 
+  async getTrendingProducts(limit: number = 10): Promise<any> {
+    try {
+      const oneWeekAgo = new Date();
+      oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+
+      this.logger.debug('Fetching trending products...');
+
+      const queryBuilder = this.productRepository
+        .createQueryBuilder('product')
+        .leftJoinAndSelect('product.category', 'category')
+        .leftJoinAndSelect('product.images', 'images')
+        .leftJoinAndSelect('product.seller', 'seller')
+        .where('product.createdAt >= :oneWeekAgo', { oneWeekAgo })
+        .orderBy('product.viewCount', 'DESC')
+        .addOrderBy('product.createdAt', 'DESC')
+        .take(limit);
+
+      this.logger.debug('Query:', queryBuilder.getSql());
+
+      const [products, total] = await queryBuilder.getManyAndCount();
+
+      this.logger.debug(`Found ${products.length} products`);
+
+      const transformedProducts = products.map((product) => {
+        try {
+          return this.transformProductResponse(product);
+        } catch (error) {
+          this.logger.error('Error transforming product:', error);
+          this.logger.debug('Product data:', JSON.stringify(product));
+          throw error;
+        }
+      });
+
+      return {
+        items: transformedProducts,
+        total,
+        page: 1,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      };
+    } catch (error) {
+      this.logger.error(
+        'Erreur lors de la récupération des produits tendances:',
+        error,
+      );
+      throw error;
+    }
+  }
+
   private transformProductResponse(product: Product) {
     return {
       id: product.id,

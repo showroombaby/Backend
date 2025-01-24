@@ -1,213 +1,411 @@
-# Baby API
+# API Backend Showroom Baby - Documentation Complète
 
-API backend pour l'application Baby, développée avec NestJS.
+## Table des matières
 
-## 🚀 Technologies
+1. [Authentification](#1-authentification)
+2. [Produits](#2-produits)
+3. [Catégories](#3-catégories)
+4. [Utilisateurs](#4-utilisateurs)
+5. [Messages](#5-messages)
+6. [Notifications](#6-notifications)
+7. [Favoris](#7-favoris)
+8. [Signalements](#8-signalements)
+9. [Mode Hors-ligne](#9-mode-hors-ligne)
+10. [Monitoring](#10-monitoring)
+11. [Structure des Données](#11-structure-des-données)
+12. [Variables d'Environnement](#12-variables-denvironnement)
+13. [Scripts Utiles](#13-scripts-utiles)
 
-- NestJS
-- TypeScript
-- PostgreSQL
-- TypeORM
-- Socket.IO
-- Redis
-- Swagger/OpenAPI
+## 1. Authentification
 
-## 📋 Prérequis
-
-- Node.js (v16+)
-- PostgreSQL
-- Redis
-- npm ou yarn
-
-## 🛠️ Installation
-
-1. Cloner le repository :
-
-```bash
-git clone [URL_DU_REPO]
-cd backend
-```
-
-2. Installer les dépendances :
-
-```bash
-npm install
-```
-
-3. Configurer les variables d'environnement :
-
-```bash
-cp .env.example .env
-```
-
-4. Configurer la base de données :
-
-```bash
-npm run migration:run
-```
-
-## 🏃‍♂️ Démarrage
-
-### Développement
-
-```bash
-npm run start:dev
-```
-
-### Production
-
-```bash
-npm run build
-npm run start:prod
-```
-
-## 📚 Documentation
-
-- Documentation API : http://localhost:3000/api
-- Documentation technique : /docs
-
-## 🧪 Tests
-
-### Tests unitaires
-
-```bash
-npm run test
-```
-
-### Tests d'intégration
-
-```bash
-npm run test:e2e
-```
-
-## 🏗️ Architecture
+### Endpoints
 
 ```
-src/
-├── common/              # Utilitaires, filtres, guards, etc.
-├── config/             # Configuration de l'application
-├── modules/            # Modules de l'application
-│   ├── auth/          # Authentification
-│   ├── users/         # Gestion des utilisateurs
-│   ├── products/      # Gestion des annonces
-│   ├── messaging/     # Messagerie temps réel
-│   ├── notifications/ # Notifications
-│   └── ...
-└── main.ts            # Point d'entrée de l'application
+POST /auth/register
+- Inscription d'un nouvel utilisateur
+- Corps: { email, password, username, role }
+- Retourne: { user: { id, email, firstName, lastName, address }, message }
+
+POST /auth/login
+- Connexion utilisateur
+- Corps: { email, password }
+- Retourne: { access_token, message }
 ```
 
-## 📦 Modules Principaux
+## 2. Produits
 
-### AuthModule
+### Endpoints
 
-- Authentification JWT
-- Register/Login
-- Vérification email
-- Reset password
+```
+GET /products
+- Liste des produits avec filtres
+- Paramètres:
+  - categoryId: Filtre par catégorie
+  - minPrice: Prix minimum
+  - maxPrice: Prix maximum
+  - condition: État du produit ('NEW' | 'LIKE_NEW' | 'GOOD' | 'FAIR')
+  - latitude, longitude, radius: Recherche géographique
+  - query: Recherche textuelle
+  - sortBy: 'price' | 'date' | 'views' | 'distance'
+  - page: Numéro de page
+  - limit: Nombre d'éléments par page
+- Retourne: { items: Product[], total, page, limit, totalPages }
 
-### UsersModule
+POST /products
+- Création d'un produit (authentification requise)
+- Format: multipart/form-data
+- Champs:
+  - title: string
+  - description: string
+  - price: number
+  - condition: 'NEW' | 'LIKE_NEW' | 'GOOD' | 'FAIR'
+  - categoryId: string
+  - images: File[]
+  - latitude: number
+  - longitude: number
+  - address: string
+  - city: string
+  - zipCode: string
+  - phone: string
 
-- CRUD utilisateurs
-- Gestion des profils
-- Préférences utilisateur
+GET /products/trending
+- Produits tendances
+- Paramètres:
+  - limit: Nombre de produits (défaut: 10)
+- Retourne: { items: Product[], total, page, limit, totalPages }
 
-### ProductsModule
+GET /products/:id
+- Détails d'un produit
+- Incrémente automatiquement le viewCount
+- Retourne: ProductDetailDto
 
-- CRUD annonces
-- Upload d'images
-- Recherche et filtrage
-- Géolocalisation
+GET /products/:id/similar
+- Produits similaires basés sur la catégorie
+- Limite: 4 produits
+- Retourne: Product[]
 
-### MessagingModule
+PUT /products/:id
+- Mise à jour d'un produit (authentification requise)
+- Même format que la création
 
-- Chat en temps réel
-- WebSocket avec Socket.IO
-- Archivage des messages
+DELETE /products/:id
+- Suppression d'un produit (authentification requise)
+```
 
-### NotificationsModule
+## 3. Catégories
 
-- Notifications temps réel
-- Notifications push iOS
-- Gestion des préférences
+### Endpoints
 
-## 🔒 Sécurité
+```
+GET /categories
+- Liste toutes les catégories
+- Retourne: Category[]
 
-- JWT pour l'authentification
-- Helmet pour les headers HTTP
-- CORS configuré
-- Validation des données (class-validator)
-- Protection contre les injections SQL
+POST /categories
+- Création d'une catégorie (admin uniquement)
+- Corps: { name, description }
 
-## 🎯 Performance
+PUT /categories/:id
+- Mise à jour d'une catégorie (admin uniquement)
+- Corps: { name, description }
 
-- Cache Redis
-- Compression des réponses
-- Optimisation des images
-- Pagination
-- Indexation PostgreSQL
+DELETE /categories/:id
+- Suppression d'une catégorie (admin uniquement)
+```
 
-## 🔄 CI/CD
+## 4. Utilisateurs
 
-- Tests automatisés
-- Linting
-- Build et déploiement automatiques
+### Endpoints
 
-## 📈 Monitoring
+```
+GET /users/profile
+- Profil de l'utilisateur connecté
+- Retourne: User (sans password)
 
-- Métriques Prometheus
-- Logging avec Winston
-- Monitoring des performances
-- Alertes
+PUT /users/profile
+- Mise à jour du profil
+- Corps: { firstName, lastName, username, avatar }
 
-## 🔧 Configuration
+POST /users/change-password
+- Changement de mot de passe
+- Corps: { oldPassword, newPassword }
 
-### Variables d'environnement
+DELETE /users/account
+- Suppression du compte utilisateur
+```
+
+## 5. Messages
+
+### Endpoints
+
+```
+POST /messages
+- Envoi d'un message
+- Corps: { recipientId, content, productId? }
+
+GET /messages/conversations
+- Liste des conversations
+- Paramètres: { page, limit }
+
+GET /messages/conversations/archived
+- Liste des conversations archivées
+- Paramètres: { page, limit }
+
+GET /messages/conversation/:userId
+- Messages d'une conversation
+- Paramètres: { page, limit }
+
+POST /messages/:id/read
+- Marquer un message comme lu
+
+POST /messages/:id/archive
+- Archiver un message
+
+POST /messages/conversation/:userId/archive
+- Archiver une conversation
+
+POST /messages/conversation/:userId/unarchive
+- Désarchiver une conversation
+```
+
+## 6. Notifications
+
+### Endpoints
+
+```
+GET /notifications
+- Liste des notifications
+- Paramètres: { page, limit }
+
+GET /notifications/unread
+- Notifications non lues
+
+GET /notifications/count/unread
+- Nombre de notifications non lues
+
+GET /notifications/type/:type
+- Notifications par type
+- Types: 'message' | 'product' | 'system' | 'favorite' | 'report'
+
+POST /notifications/:id/read
+- Marquer une notification comme lue
+
+POST /notifications/read/all
+- Marquer toutes les notifications comme lues
+
+POST /notifications/:id/archive
+- Archiver une notification
+
+DELETE /notifications/:id
+- Supprimer une notification
+```
+
+## 7. Favoris
+
+### Endpoints
+
+```
+POST /favorites/:productId
+- Ajouter un produit aux favoris
+
+DELETE /favorites/:productId
+- Retirer un produit des favoris
+
+GET /favorites
+- Liste des favoris
+
+GET /favorites/:id
+- Détails d'un favori
+```
+
+## 8. Signalements
+
+### Endpoints
+
+```
+POST /reports
+- Signaler un produit
+- Corps: {
+  productId: string,
+  reason: 'inappropriate' | 'fake' | 'offensive' | 'spam' | 'other',
+  description: string
+}
+```
+
+## 9. Mode Hors-ligne
+
+### Endpoints
+
+```
+POST /offline/sync
+- Synchronisation des opérations hors-ligne
+- Corps: {
+  entityType: string,
+  entityId: string,
+  operation: 'create' | 'update' | 'delete',
+  data: any
+}
+```
+
+## 10. Monitoring
+
+### Endpoints
+
+```
+GET /monitoring/health
+- Vérification de la santé de l'application
+
+GET /monitoring/metrics
+- Métriques de l'application (authentification requise)
+```
+
+## 11. Structure des Données
+
+### Product
+
+```typescript
+{
+  id: string;
+  title: string;
+  description: string;
+  price: number;
+  condition: 'NEW' | 'LIKE_NEW' | 'GOOD' | 'FAIR';
+  status: 'DRAFT' | 'PUBLISHED' | 'SOLD' | 'ARCHIVED';
+  images: ProductImage[];
+  seller: User;
+  category: Category;
+  viewCount: number;
+  latitude?: number;
+  longitude?: number;
+  address?: string;
+  city?: string;
+  zipCode?: string;
+  phone?: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+```
+
+### Category
+
+```typescript
+{
+  id: string;
+  name: string;
+  description: string;
+  products: Product[];
+  createdAt: Date;
+  updatedAt: Date;
+}
+```
+
+### User
+
+```typescript
+{
+  id: string;
+  email: string;
+  firstName?: string;
+  lastName?: string;
+  avatar?: string;
+  avatarUrl?: string;
+  name?: string;
+  username?: string;
+  rating: number;
+  role: 'USER' | 'ADMIN';
+  isEmailVerified: boolean;
+  address?: {
+    street: string;
+    city: string;
+    zipCode: string;
+    country: string;
+  };
+  createdAt: Date;
+  updatedAt: Date;
+}
+```
+
+### Message
+
+```typescript
+{
+  id: string;
+  content: string;
+  senderId: string;
+  recipientId: string;
+  productId?: string;
+  read: boolean;
+  archivedBySender: boolean;
+  archivedByRecipient: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}
+```
+
+### Notification
+
+```typescript
+{
+  id: string;
+  type: 'message' | 'product' | 'system' | 'favorite' | 'report';
+  title: string;
+  message: string;
+  metadata?: Record<string, any>;
+  status: 'unread' | 'read' | 'archived';
+  userId: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+```
+
+### Report
+
+```typescript
+{
+  id: string;
+  reporterId: string;
+  productId: string;
+  reason: 'inappropriate' | 'fake' | 'offensive' | 'spam' | 'other';
+  description: string;
+  status: 'pending' | 'reviewed' | 'resolved' | 'rejected';
+  moderationNote?: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+```
+
+## 12. Variables d'Environnement
 
 ```env
-# Application
+# Database
+DATABASE_HOST=localhost
+DATABASE_PORT=5432
+DATABASE_NAME=showroom_baby
+DATABASE_USER=postgres
+DATABASE_PASSWORD=postgres
+
+# JWT
+JWT_SECRET=your_jwt_secret
+JWT_EXPIRATION=24h
+
+# Server
 PORT=3000
 NODE_ENV=development
 
-# Base de données
-DB_HOST=localhost
-DB_PORT=5432
-DB_USERNAME=postgres
-DB_PASSWORD=password
-DB_DATABASE=baby
-
-# JWT
-JWT_SECRET=your-secret-key
-JWT_EXPIRATION=1d
-
-# Redis
-REDIS_HOST=localhost
-REDIS_PORT=6379
-
-# Email
-SMTP_HOST=smtp.example.com
-SMTP_PORT=587
-SMTP_USER=user
-SMTP_PASS=password
-
-# Stockage
-STORAGE_TYPE=local
-STORAGE_PATH=./uploads
-
-# Apple Push Notifications
-APPLE_PUSH_KEY=path/to/key
-APPLE_PUSH_KEY_ID=key-id
-APPLE_TEAM_ID=team-id
-APPLE_BUNDLE_ID=com.example.app
+# Admin
+ADMIN_EMAIL=admin@showroom.com
+ADMIN_PASSWORD=Admin123!
 ```
 
-## 📝 Contribution
+## 13. Scripts Utiles
 
-1. Fork le projet
-2. Créer une branche (`git checkout -b feature/amazing-feature`)
-3. Commit les changements (`git commit -m 'Add amazing feature'`)
-4. Push la branche (`git push origin feature/amazing-feature`)
-5. Ouvrir une Pull Request
+```bash
+# Reset de la base de données
+./reset-db.sh
 
-## 📄 Licence
+# Création des catégories
+./seed-categories.sh
 
-Ce projet est sous licence MIT. Voir le fichier `LICENSE` pour plus de détails.
+# Création des produits de test
+./seed-products.sh
+```

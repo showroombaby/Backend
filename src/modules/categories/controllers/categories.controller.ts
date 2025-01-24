@@ -16,8 +16,7 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { Roles } from '../../auth/decorators/roles.decorator';
-import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
-import { RolesGuard } from '../../auth/guards/roles.guard';
+import { AuthGuard } from '../../auth/guards/auth.guard';
 import { Role } from '../../users/enums/role.enum';
 import { CreateCategoryDto } from '../dto/create-category.dto';
 import { UpdateCategoryDto } from '../dto/update-category.dto';
@@ -33,7 +32,7 @@ export class CategoriesController {
   constructor(private readonly categoriesService: CategoriesService) {}
 
   @Post()
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(AuthGuard)
   @Roles(Role.ADMIN)
   @ApiOperation({ summary: 'Créer une nouvelle catégorie' })
   @ApiResponse({
@@ -116,7 +115,7 @@ export class CategoriesController {
   }
 
   @Put(':id')
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(AuthGuard)
   @Roles(Role.ADMIN)
   @ApiOperation({ summary: 'Mettre à jour une catégorie' })
   @ApiResponse({
@@ -160,7 +159,7 @@ export class CategoriesController {
   }
 
   @Delete(':id')
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(AuthGuard)
   @Roles(Role.ADMIN)
   @ApiOperation({ summary: 'Supprimer une catégorie' })
   @ApiResponse({
