@@ -24,8 +24,17 @@ export class UsersService {
 
   async create(registerDto: RegisterDto): Promise<User> {
     try {
+      // Vérifier si l'username est déjà utilisé
+      const existingUsername = await this.findByUsername(registerDto.username);
+      if (existingUsername) {
+        throw new BadRequestException("Ce nom d'utilisateur est déjà utilisé");
+      }
+
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { avatar, ...userDto } = registerDto;
+
       const user = this.userRepository.create({
-        ...registerDto,
+        ...userDto,
         role: registerDto.role || Role.USER,
       });
 
@@ -41,6 +50,18 @@ export class UsersService {
       return await this.userRepository.findOne({ where: { email } });
     } catch (error) {
       this.logger.error('Erreur lors de la recherche par email:', error);
+      throw error;
+    }
+  }
+
+  async findByUsername(username: string): Promise<User | null> {
+    try {
+      return await this.userRepository.findOne({ where: { username } });
+    } catch (error) {
+      this.logger.error(
+        "Erreur lors de la recherche par nom d'utilisateur:",
+        error,
+      );
       throw error;
     }
   }
@@ -68,6 +89,21 @@ export class UsersService {
         throw new NotFoundException('User not found');
       }
 
+      // Vérifier l'unicité de l'username si modifié
+      if (
+        updateProfileDto.username &&
+        updateProfileDto.username !== user.username
+      ) {
+        const existingUsername = await this.findByUsername(
+          updateProfileDto.username,
+        );
+        if (existingUsername) {
+          throw new BadRequestException(
+            "Ce nom d'utilisateur est déjà utilisé",
+          );
+        }
+      }
+
       // Mettre à jour uniquement les champs fournis
       Object.assign(user, updateProfileDto);
 
@@ -75,6 +111,7 @@ export class UsersService {
       const updatedUser = await this.userRepository.save(user);
 
       // Retourner l'utilisateur mis à jour sans le mot de passe
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const { password, ...result } = updatedUser;
       return result;
     } catch (error) {

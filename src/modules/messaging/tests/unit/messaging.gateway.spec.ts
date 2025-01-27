@@ -31,9 +31,9 @@ describe('MessagingGateway', () => {
   };
 
   const mockUser: User = {
-    id: 'sender-id',
+    id: 'test-id',
     email: 'test@example.com',
-    password: 'hashed_password',
+    password: 'password',
     firstName: 'Test',
     lastName: 'User',
     role: Role.USER,

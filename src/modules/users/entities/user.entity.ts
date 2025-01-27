@@ -25,6 +25,9 @@ export class User {
   @Column({ unique: true })
   email: string;
 
+  @Column({ unique: true })
+  username: string;
+
   @Column()
   @Exclude()
   password: string;
@@ -44,10 +47,13 @@ export class User {
   @Column({ nullable: true })
   name: string;
 
-  @Column({ nullable: true })
-  username: string;
-
-  @Column({ type: 'decimal', precision: 3, scale: 2, default: 0 })
+  @Column({
+    type: 'decimal',
+    precision: 3,
+    scale: 2,
+    default: 0,
+    name: 'rating',
+  })
   rating: number;
 
   @Column({

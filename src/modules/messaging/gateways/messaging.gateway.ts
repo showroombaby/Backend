@@ -28,7 +28,13 @@ interface NotificationPayload {
 
 @WebSocketGateway({
   cors: {
-    origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+    origin: [
+      'http://localhost:3000',
+      'http://localhost:5173',
+      'http://localhost:4173',
+      'http://localhost:8080',
+      process.env.FRONTEND_URL,
+    ].filter(Boolean),
     credentials: true,
   },
   namespace: 'messaging',

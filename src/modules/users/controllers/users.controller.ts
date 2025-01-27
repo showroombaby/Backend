@@ -39,8 +39,25 @@ export class UsersController {
     description: 'Non authentifié',
   })
   async getProfile(@Req() req: any) {
-    const { password, ...userWithoutPassword } = req.user;
-    return userWithoutPassword;
+    // Charger l'utilisateur complet avec toutes les informations
+    const user = await this.usersService.findById(req.user.id);
+
+    // Retourner toutes les informations sauf le mot de passe
+    return {
+      id: user.id,
+      email: user.email,
+      username: user.username,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      avatar: user.avatar,
+      avatarUrl: user.avatarUrl,
+      role: user.role,
+      rating: user.rating,
+      isEmailVerified: user.isEmailVerified,
+      address: user.address,
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt,
+    };
   }
 
   @Put('profile')

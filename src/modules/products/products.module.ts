@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { CategoriesModule } from '../categories/categories.module';
 import { Category } from '../categories/entities/category.entity';
@@ -19,6 +19,8 @@ import { ProductViewsService } from './services/product-views.service';
 import { ProductsService } from './services/products.service';
 import { ReportsService } from './services/reports.service';
 import { SavedFiltersService } from './services/saved-filters.service';
+import { User } from '../users/entities/user.entity';
+import { UsersModule } from '../users/users.module';
 
 @Module({
   imports: [
@@ -30,8 +32,10 @@ import { SavedFiltersService } from './services/saved-filters.service';
       Category,
       SavedFilter,
       Report,
+      User,
     ]),
-    CategoriesModule,
+    forwardRef(() => CategoriesModule),
+    forwardRef(() => UsersModule),
     StorageModule,
   ],
   controllers: [

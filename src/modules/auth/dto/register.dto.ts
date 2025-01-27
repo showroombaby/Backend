@@ -8,6 +8,7 @@ import {
   Length,
   MinLength,
   ValidateNested,
+  Matches,
 } from 'class-validator';
 import { Role } from '../../users/enums/role.enum';
 
@@ -50,17 +51,52 @@ export class AddressDto {
 }
 
 export class RegisterDto {
-  @IsEmail()
+  @ApiProperty({
+    example: 'john.doe@example.com',
+    description: "Email de l'utilisateur",
+  })
+  @IsEmail({}, { message: 'Veuillez fournir une adresse email valide' })
   email: string;
 
+  @ApiProperty({
+    example: 'johndoe',
+    description: "Nom d'utilisateur unique",
+  })
+  @IsString({
+    message: "Le nom d'utilisateur doit être une chaîne de caractères",
+  })
+  @MinLength(3, {
+    message: "Le nom d'utilisateur doit contenir au moins 3 caractères",
+  })
+  @Matches(/^[a-zA-Z0-9_-]+$/, {
+    message:
+      "Le nom d'utilisateur ne peut contenir que des lettres, des chiffres, des tirets et des underscores",
+  })
+  username: string;
+
+  @ApiProperty({
+    example: 'Password123!',
+    description: "Mot de passe de l'utilisateur",
+    minLength: 8,
+  })
   @IsString()
   @MinLength(8)
   password: string;
 
+  @ApiProperty({
+    example: 'John',
+    description: "Prénom de l'utilisateur",
+    required: false,
+  })
   @IsString()
   @IsOptional()
   firstName?: string;
 
+  @ApiProperty({
+    example: 'Doe',
+    description: "Nom de l'utilisateur",
+    required: false,
+  })
   @IsString()
   @IsOptional()
   lastName?: string;
@@ -82,4 +118,13 @@ export class RegisterDto {
   })
   @IsOptional()
   role?: Role;
+
+  @ApiProperty({
+    type: 'string',
+    format: 'binary',
+    description: "Image de profil de l'utilisateur",
+    required: false,
+  })
+  @IsOptional()
+  avatar?: Express.Multer.File;
 }

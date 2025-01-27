@@ -18,9 +18,9 @@
 
 ## 1. Authentification
 
-### Endpoints
+### Endpoints d'Authentification
 
-```
+```typescript
 POST /auth/register
 - Inscription d'un nouvel utilisateur
 - Corps: { email, password, username, role }
@@ -34,9 +34,9 @@ POST /auth/login
 
 ## 2. Produits
 
-### Endpoints
+### Endpoints des Produits
 
-```
+```typescript
 GET /products
 - Liste des produits avec filtres
 - Paramètres:
@@ -50,7 +50,11 @@ GET /products
   - page: Numéro de page
   - limit: Nombre d'éléments par page
 - Retourne: { items: Product[], total, page, limit, totalPages }
+```
 
+### Endpoints de Création
+
+```typescript
 POST /products
 - Création d'un produit (authentification requise)
 - Format: multipart/form-data
@@ -67,7 +71,11 @@ POST /products
   - city: string
   - zipCode: string
   - phone: string
+```
 
+### Endpoints de Recherche
+
+```typescript
 GET /products/trending
 - Produits tendances
 - Paramètres:
@@ -83,7 +91,11 @@ GET /products/:id/similar
 - Produits similaires basés sur la catégorie
 - Limite: 4 produits
 - Retourne: Product[]
+```
 
+### Endpoints de Modification
+
+```typescript
 PUT /products/:id
 - Mise à jour d'un produit (authentification requise)
 - Même format que la création
@@ -94,9 +106,9 @@ DELETE /products/:id
 
 ## 3. Catégories
 
-### Endpoints
+### Endpoints des Catégories
 
-```
+```typescript
 GET /categories
 - Liste toutes les catégories
 - Retourne: Category[]
@@ -115,9 +127,9 @@ DELETE /categories/:id
 
 ## 4. Utilisateurs
 
-### Endpoints
+### Endpoints des Utilisateurs
 
-```
+```typescript
 GET /users/profile
 - Profil de l'utilisateur connecté
 - Retourne: User (sans password)
@@ -136,9 +148,9 @@ DELETE /users/account
 
 ## 5. Messages
 
-### Endpoints
+### Endpoints des Messages
 
-```
+```typescript
 POST /messages
 - Envoi d'un message
 - Corps: { recipientId, content, productId? }
@@ -170,9 +182,9 @@ POST /messages/conversation/:userId/unarchive
 
 ## 6. Notifications
 
-### Endpoints
+### Endpoints des Notifications
 
-```
+```typescript
 GET /notifications
 - Liste des notifications
 - Paramètres: { page, limit }
@@ -202,9 +214,9 @@ DELETE /notifications/:id
 
 ## 7. Favoris
 
-### Endpoints
+### Endpoints des Favoris
 
-```
+```typescript
 POST /favorites/:productId
 - Ajouter un produit aux favoris
 
@@ -220,9 +232,9 @@ GET /favorites/:id
 
 ## 8. Signalements
 
-### Endpoints
+### Endpoints des Signalements
 
-```
+```typescript
 POST /reports
 - Signaler un produit
 - Corps: {
@@ -234,9 +246,9 @@ POST /reports
 
 ## 9. Mode Hors-ligne
 
-### Endpoints
+### Endpoints de Synchronisation
 
-```
+```typescript
 POST /offline/sync
 - Synchronisation des opérations hors-ligne
 - Corps: {
@@ -249,9 +261,9 @@ POST /offline/sync
 
 ## 10. Monitoring
 
-### Endpoints
+### Endpoints de Monitoring
 
-```
+```typescript
 GET /monitoring/health
 - Vérification de la santé de l'application
 
@@ -261,7 +273,7 @@ GET /monitoring/metrics
 
 ## 11. Structure des Données
 
-### Product
+### Modèle Product
 
 ```typescript
 {
@@ -286,7 +298,7 @@ GET /monitoring/metrics
 }
 ```
 
-### Category
+### Modèle Category
 
 ```typescript
 {
@@ -299,7 +311,7 @@ GET /monitoring/metrics
 }
 ```
 
-### User
+### Modèle User
 
 ```typescript
 {
@@ -325,7 +337,7 @@ GET /monitoring/metrics
 }
 ```
 
-### Message
+### Modèle Message
 
 ```typescript
 {
@@ -342,7 +354,7 @@ GET /monitoring/metrics
 }
 ```
 
-### Notification
+### Modèle Notification
 
 ```typescript
 {
@@ -358,7 +370,7 @@ GET /monitoring/metrics
 }
 ```
 
-### Report
+### Modèle Report
 
 ```typescript
 {

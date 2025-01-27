@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { EmailService } from '../../email/services/email.service';
+import { FileService } from '../../users/services/file.service';
 import { UsersService } from '../../users/services/users.service';
 import { LoginDto } from '../dto/login.dto';
 import { RegisterDto } from '../dto/register.dto';
@@ -18,9 +19,10 @@ export class AuthService {
     private readonly usersService: UsersService,
     private readonly jwtService: JwtService,
     private readonly emailService: EmailService,
+    private readonly fileService: FileService,
   ) {}
 
-  async register(registerDto: RegisterDto) {
+  async register(registerDto: RegisterDto, avatar?: Express.Multer.File) {
     try {
       const existingUser = await this.usersService.findByEmail(
         registerDto.email,
@@ -30,6 +32,16 @@ export class AuthService {
       }
 
       const user = await this.usersService.create(registerDto);
+
+      if (avatar) {
+        const filename = await this.fileService.saveAvatar(avatar, user.id);
+        user.avatar = filename;
+        user.avatarUrl = `/uploads/avatars/${filename}`;
+        await this.usersService.updateProfile(user.id, {
+          avatar: user.avatar,
+          avatarUrl: user.avatarUrl,
+        });
+      }
 
       // Temporairement désactivé pour faciliter les tests
       // await this.emailService.sendVerificationEmail(user);
@@ -41,6 +53,7 @@ export class AuthService {
           firstName: user.firstName,
           lastName: user.lastName,
           address: user.address,
+          avatarUrl: user.avatarUrl,
         },
         message: 'Registration successful',
       };

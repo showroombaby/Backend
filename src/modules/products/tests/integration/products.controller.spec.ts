@@ -14,18 +14,32 @@ import { ProductStatus } from '../../enums/product-status.enum';
 import { ProductFavoritesService } from '../../services/product-favorites.service';
 import { ProductImagesService } from '../../services/product-images.service';
 import { ProductsService } from '../../services/products.service';
+import { Role } from '../../../users/enums/role.enum';
 
 describe('ProductsController (Integration)', () => {
   let controller: ProductsController;
-  let module: TestingModule;
 
-  const testUser = {
-    id: '1',
+  const testUser: User = {
+    id: '123e4567-e89b-12d3-a456-426614174000',
     email: 'test@example.com',
     username: 'testuser',
-    name: 'Test User',
+    password: 'hashed_password',
+    firstName: 'Test',
+    lastName: 'User',
+    role: Role.USER,
+    avatar: null,
     avatarUrl: null,
+    name: 'Test User',
     rating: 0,
+    isEmailVerified: false,
+    address: null,
+    products: [],
+    views: [],
+    savedFilters: [],
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    hashPassword: async () => {},
+    validatePassword: async () => true,
   };
 
   const testCategory = {
@@ -77,7 +91,6 @@ describe('ProductsController (Integration)', () => {
             username: testUser.username,
             name: testUser.name,
             avatarUrl: testUser.avatarUrl,
-            rating: testUser.rating,
           },
         });
       }
@@ -143,7 +156,7 @@ describe('ProductsController (Integration)', () => {
   };
 
   beforeEach(async () => {
-    module = await Test.createTestingModule({
+    const module: TestingModule = await Test.createTestingModule({
       controllers: [ProductsController],
       providers: [
         {

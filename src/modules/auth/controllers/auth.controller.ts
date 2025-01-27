@@ -5,7 +5,11 @@ import {
   HttpStatus,
   Logger,
   Post,
+  UploadedFile,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { ApiConsumes } from '@nestjs/swagger';
 import { LoginDto } from '../dto/login.dto';
 import { RegisterDto } from '../dto/register.dto';
 import { AuthService } from '../services/auth.service';
@@ -17,9 +21,14 @@ export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   @Post('register')
-  async register(@Body() registerDto: RegisterDto) {
+  @ApiConsumes('multipart/form-data')
+  @UseInterceptors(FileInterceptor('avatar'))
+  async register(
+    @Body() registerDto: RegisterDto,
+    @UploadedFile() avatar?: Express.Multer.File,
+  ) {
     try {
-      const result = await this.authService.register(registerDto);
+      const result = await this.authService.register(registerDto, avatar);
       return {
         user: {
           id: result.user.id,
@@ -27,6 +36,7 @@ export class AuthController {
           firstName: result.user.firstName,
           lastName: result.user.lastName,
           address: result.user.address,
+          avatarUrl: result.user.avatarUrl,
         },
         message: result.message,
       };

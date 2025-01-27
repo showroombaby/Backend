@@ -23,7 +23,8 @@
     "migration:run": "npm run typeorm -- migration:run -d src/ormconfig.ts",
     "migration:revert": "npm run typeorm -- migration:revert -d src/ormconfig.ts",
     "test:load": "k6 run tests/load/load-test.js",
-    "test:load:report": "k6 run --out json=test-results.json tests/load/load-test.js"
+    "test:load:report": "k6 run --out json=test-results.json tests/load/load-test.js",
+    "generate:admin-hash": "ts-node src/scripts/generate-admin-hash.ts"
   },
   "dependencies": {
     "@nestjs-modules/mailer": "^2.0.2",

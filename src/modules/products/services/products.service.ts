@@ -12,6 +12,7 @@ import { ProductImage } from '../entities/product-image.entity';
 import { Product, ProductStatus } from '../entities/product.entity';
 import { ProductFavoritesService } from './product-favorites.service';
 import { ProductImagesService } from './product-images.service';
+import { User } from '../../users/entities/user.entity';
 
 @Injectable()
 export class ProductsService {
@@ -25,6 +26,8 @@ export class ProductsService {
     private readonly productImagesService: ProductImagesService,
     private readonly categoriesService: CategoriesService,
     private readonly productFavoritesService: ProductFavoritesService,
+    @InjectRepository(User)
+    private readonly userRepository: Repository<User>,
   ) {}
 
   async create(
@@ -39,10 +42,31 @@ export class ProductsService {
 
       const product = this.productRepository.create({
         ...createProductDto,
-        seller: { id: userId },
         category,
       });
 
+      const seller = await this.userRepository.findOne({
+        where: { id: userId },
+        select: [
+          'id',
+          'email',
+          'username',
+          'firstName',
+          'lastName',
+          'name',
+          'avatar',
+          'avatarUrl',
+          'isEmailVerified',
+          'role',
+          'createdAt',
+        ],
+      });
+
+      if (!seller) {
+        throw new NotFoundException('Seller not found');
+      }
+
+      product.seller = seller;
       const savedProduct = await this.productRepository.save(product);
 
       if (images && images.length > 0) {
@@ -383,23 +407,25 @@ export class ProductsService {
       id: product.id,
       title: product.title,
       description: product.description,
-      price: Number(product.price),
+      price: product.price,
+      category: product.category,
       condition: product.condition,
-      status: product.status,
-      images: product.images.map((img) => img.url),
+      images: product.images,
       seller: {
         id: product.seller.id,
-        username: product.seller.username,
-        avatarUrl: product.seller.avatarUrl,
-        name: product.seller.name,
         email: product.seller.email,
-        rating: product.seller.rating,
+        username: product.seller.username,
+        firstName: product.seller.firstName,
+        lastName: product.seller.lastName,
+        name:
+          product.seller.name ||
+          `${product.seller.firstName} ${product.seller.lastName}`.trim(),
+        avatar: product.seller.avatar,
+        avatarUrl: product.seller.avatarUrl,
+        role: product.seller.role,
+        isEmailVerified: product.seller.isEmailVerified,
+        createdAt: product.seller.createdAt,
       },
-      category: {
-        id: product.category.id,
-        name: product.category.name,
-      },
-      viewCount: product.viewCount,
       createdAt: product.createdAt,
       updatedAt: product.updatedAt,
     };
