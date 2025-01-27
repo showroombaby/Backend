@@ -5,6 +5,7 @@ import { DataSource, Repository } from 'typeorm';
 import { Category } from '../../../categories/entities/category.entity';
 import { CategoriesService } from '../../../categories/services/categories.service';
 import { User } from '../../../users/entities/user.entity';
+import { Role } from '../../../users/enums/role.enum';
 import { ProductImage } from '../../entities/product-image.entity';
 import { Product, ProductStatus } from '../../entities/product.entity';
 import { ProductCondition } from '../../enums/product-condition.enum';
@@ -27,6 +28,7 @@ describe('ProductsService', () => {
     price: 99.99,
     status: ProductStatus.DRAFT,
     condition: ProductCondition.NEW,
+    viewCount: 1,
     seller: { id: '123e4567-e89b-12d3-a456-426614174001' } as User,
     category: {
       id: '123e4567-e89b-12d3-a456-426614174002',
@@ -84,6 +86,33 @@ describe('ProductsService', () => {
     }),
   };
 
+  const mockUser: User = {
+    id: '1',
+    email: 'seller@test.com',
+    username: 'seller',
+    password: 'hashedPassword',
+    firstName: 'Test',
+    lastName: 'Seller',
+    role: Role.USER,
+    isEmailVerified: false,
+    rating: 0,
+    avatar: null,
+    avatarUrl: null,
+    name: 'Test Seller',
+    address: {
+      street: '123 Test St',
+      zipCode: '75000',
+      city: 'Paris',
+    },
+    products: [],
+    views: [],
+    savedFilters: [],
+    hashPassword: async () => {},
+    validatePassword: async () => true,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -95,6 +124,19 @@ describe('ProductsService', () => {
         {
           provide: getRepositoryToken(ProductImage),
           useValue: mockRepository,
+        },
+        {
+          provide: getRepositoryToken(User),
+          useValue: {
+            ...mockRepository,
+            findOne: jest.fn().mockResolvedValue({
+              id: '123e4567-e89b-12d3-a456-426614174001',
+              email: 'seller@test.com',
+              username: 'seller',
+              firstName: 'Test',
+              lastName: 'Seller',
+            }),
+          },
         },
         {
           provide: ProductImagesService,
@@ -159,24 +201,54 @@ describe('ProductsService', () => {
       price: 99.99,
       condition: ProductCondition.NEW,
       categoryId: '1',
+      seller: mockUser,
+      category: mockCategory,
     };
 
     it('devrait créer un nouveau produit avec succès', async () => {
       // Arrange
       jest.spyOn(categoriesService, 'findOne').mockResolvedValue(mockCategory);
-      mockRepository.create.mockReturnValue(mockProduct);
-      mockRepository.save.mockResolvedValue(mockProduct);
+      mockRepository.create.mockReturnValue({
+        id: '123e4567-e89b-12d3-a456-426614174000',
+        title: 'Test Product',
+        description: 'Test Description',
+        price: 99.99,
+        status: ProductStatus.DRAFT,
+        condition: ProductCondition.NEW,
+        viewCount: 1,
+        seller: mockUser,
+        category: mockCategory,
+        images: [],
+        views: [],
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+      mockRepository.save.mockResolvedValue({
+        ...mockProduct,
+        seller: mockUser,
+        category: mockCategory,
+      });
 
       // Act
       const result = await service.create(createProductDto, mockImages, '1');
 
       // Assert
-      expect(result).toEqual(mockProduct);
-      expect(productRepository.create).toHaveBeenCalledWith({
-        ...createProductDto,
-        seller: { id: '1' },
+      expect(result).toEqual({
+        ...mockProduct,
+        seller: mockUser,
         category: mockCategory,
       });
+      expect(productRepository.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'Test Product',
+          description: 'Test Description',
+          price: 99.99,
+          condition: ProductCondition.NEW,
+          categoryId: '1',
+          seller: mockUser,
+          category: mockCategory,
+        }),
+      );
     });
 
     it("devrait échouer si la catégorie n'existe pas", async () => {
@@ -319,29 +391,38 @@ describe('ProductsService', () => {
 
   describe('getProductDetails', () => {
     it('devrait retourner les détails du produit avec le statut favori', async () => {
-      const productWithViewCount = {
+      const productId = '123e4567-e89b-12d3-a456-426614174000';
+      const userId = '123e4567-e89b-12d3-a456-426614174001';
+
+      const mockProductWithViews = {
         ...mockProduct,
         viewCount: 0,
+        views: [{ id: '1', userId, productId, createdAt: new Date() }],
       };
 
-      mockRepository.findOne.mockResolvedValue(productWithViewCount);
+      mockRepository.findOne.mockResolvedValue(mockProductWithViews);
+      jest.spyOn(productFavoritesService, 'isFavorite').mockResolvedValue(true);
       mockRepository.save.mockResolvedValue({
-        ...productWithViewCount,
+        ...mockProductWithViews,
+        isFavorite: true,
         viewCount: 1,
       });
-      jest.spyOn(productFavoritesService, 'isFavorite').mockResolvedValue(true);
 
-      const result = await service.getProductDetails(
-        productWithViewCount.id,
-        '1',
-      );
+      const result = await service.getProductDetails(productId, userId);
 
       expect(result).toBeDefined();
       expect(result.isFavorite).toBe(true);
       expect(result.viewCount).toBe(1);
       expect(mockRepository.save).toHaveBeenCalledWith(
         expect.objectContaining({
+          id: productId,
           viewCount: 1,
+          views: expect.arrayContaining([
+            expect.objectContaining({
+              userId,
+              productId,
+            }),
+          ]),
         }),
       );
     });

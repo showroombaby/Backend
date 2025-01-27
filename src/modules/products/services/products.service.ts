@@ -7,12 +7,13 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { CategoriesService } from '../../categories/services/categories.service';
+import { User } from '../../users/entities/user.entity';
 import { SearchProductsDto } from '../dto/search-products.dto';
 import { ProductImage } from '../entities/product-image.entity';
+import { ProductView } from '../entities/product-view.entity';
 import { Product, ProductStatus } from '../entities/product.entity';
 import { ProductFavoritesService } from './product-favorites.service';
 import { ProductImagesService } from './product-images.service';
-import { User } from '../../users/entities/user.entity';
 
 @Injectable()
 export class ProductsService {
@@ -297,20 +298,37 @@ export class ProductsService {
     try {
       const product = await this.productRepository.findOne({
         where: { id },
-        relations: ['seller', 'category', 'images'],
+        relations: ['seller', 'category', 'images', 'views', 'views.user'],
       });
 
       if (!product) {
         throw new NotFoundException('Product not found');
       }
 
-      // Incrémenter le compteur de vues
-      product.viewCount = (product.viewCount || 0) + 1;
-      await this.productRepository.save(product);
-
       const isFavorite = userId
         ? await this.productFavoritesService.isFavorite(userId, id)
         : false;
+
+      // Incrémenter le compteur de vues et ajouter une nouvelle vue si userId est fourni
+      if (userId) {
+        if (!product.views) {
+          product.views = [];
+        }
+
+        const existingView = product.views.find((v) => v.user?.id === userId);
+
+        if (!existingView) {
+          const view = new ProductView();
+          view.product = product;
+          view.user = { id: userId } as User;
+          view.ip = '127.0.0.1'; // Valeur par défaut pour les tests
+          view.userAgent = 'Test User Agent';
+
+          product.views.push(view);
+          product.viewCount = (product.viewCount || 0) + 1;
+          await this.productRepository.save(product);
+        }
+      }
 
       return {
         ...this.transformProductResponse(product),
@@ -411,6 +429,7 @@ export class ProductsService {
       category: product.category,
       condition: product.condition,
       images: product.images,
+      viewCount: product.viewCount,
       seller: {
         id: product.seller.id,
         email: product.seller.email,

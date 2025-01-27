@@ -18,7 +18,7 @@ const options: DataSourceOptions = {
   password: process.env.DB_PASSWORD,
   database: process.env.DB_NAME,
   entities: [Product, ProductImage, Category, User, ProductView, SavedFilter],
-  migrations: [],
+  migrations: ['src/migrations/*.ts'],
   synchronize: false,
   logging: process.env.NODE_ENV === 'development',
 };

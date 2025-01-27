@@ -9,6 +9,7 @@ import { Repository } from 'typeorm';
 import { TestDatabaseModule } from '../../../../common/test/database.module';
 import { EmailService } from '../../../email/services/email.service';
 import { User } from '../../../users/entities/user.entity';
+import { FileService } from '../../../users/services/file.service';
 import { UsersService } from '../../../users/services/users.service';
 import { AuthController } from '../../controllers/auth.controller';
 import { AuthService } from '../../services/auth.service';
@@ -50,6 +51,11 @@ describe('AuthController (Integration)', () => {
     decode: jest.fn().mockReturnValue({ sub: TEST_USER_ID }),
   };
 
+  const mockFileService = {
+    saveAvatar: jest.fn().mockResolvedValue('avatar.jpg'),
+    deleteAvatar: jest.fn().mockResolvedValue(true),
+  };
+
   beforeAll(async () => {
     moduleFixture = await Test.createTestingModule({
       imports: [TestDatabaseModule, TypeOrmModule.forFeature([User])],
@@ -67,6 +73,10 @@ describe('AuthController (Integration)', () => {
         {
           provide: EmailService,
           useValue: mockEmailService,
+        },
+        {
+          provide: FileService,
+          useValue: mockFileService,
         },
         {
           provide: UsersService,

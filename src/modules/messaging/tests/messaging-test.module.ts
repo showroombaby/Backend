@@ -3,7 +3,6 @@ import { ConfigService } from '@nestjs/config';
 import { JwtModule, JwtService } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import * as jwt from 'jsonwebtoken';
 import { Repository } from 'typeorm';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { WsJwtGuard } from '../../auth/guards/ws-jwt.guard';
@@ -36,32 +35,60 @@ const mockConfigService = {
 const mockUsersService = {
   logger: new Logger('UsersService'),
   userRepository: {} as Repository<User>,
-  findById: jest.fn().mockResolvedValue({
-    id: TEST_USER_ID,
+  findById: jest.fn().mockImplementation(async (id: string) => ({
+    id,
     email: 'test@example.com',
-  }),
-  findByEmail: jest.fn().mockResolvedValue({
+    username: 'testuser',
+    firstName: 'Test',
+    lastName: 'User',
+    role: 'user',
+    isEmailVerified: true,
+    rating: 0,
+    address: {
+      street: '123 Test St',
+      zipCode: '75000',
+      city: 'Paris',
+      additionalInfo: '',
+    },
+  })),
+  findByEmail: jest.fn().mockImplementation(async (email: string) => ({
     id: TEST_USER_ID,
-    email: 'test@example.com',
-  }),
+    email,
+    username: 'testuser',
+    firstName: 'Test',
+    lastName: 'User',
+    role: 'user',
+    isEmailVerified: true,
+    rating: 0,
+    address: {
+      street: '123 Test St',
+      zipCode: '75000',
+      city: 'Paris',
+      additionalInfo: '',
+    },
+  })),
   create: jest.fn().mockResolvedValue({
     id: TEST_USER_ID,
     email: 'test@example.com',
+    username: 'testuser',
   }),
   updateProfile: jest.fn().mockResolvedValue({
     id: TEST_USER_ID,
     email: 'test@example.com',
+    username: 'testuser',
   }),
   findAll: jest.fn().mockResolvedValue([
     {
       id: TEST_USER_ID,
       email: 'test@example.com',
+      username: 'testuser',
     },
   ]),
   remove: jest.fn().mockResolvedValue(true),
   update: jest.fn().mockResolvedValue({
     id: TEST_USER_ID,
     email: 'test@example.com',
+    username: 'testuser',
   }),
   changePassword: jest.fn().mockResolvedValue(true),
   verifyEmail: jest.fn().mockResolvedValue(true),
@@ -69,16 +96,44 @@ const mockUsersService = {
 } as unknown as UsersService;
 
 const mockJwtService = {
-  sign: jest.fn((payload) => {
-    return jwt.sign(payload, JWT_SECRET);
+  sign: jest.fn().mockImplementation(() => {
+    return 'test.jwt.token';
   }),
-  verify: jest.fn().mockResolvedValue({ sub: TEST_USER_ID }),
-  signAsync: jest.fn().mockResolvedValue('test-token'),
-  verifyAsync: jest.fn().mockResolvedValue({ sub: TEST_USER_ID }),
-  decode: jest.fn().mockReturnValue({ sub: TEST_USER_ID }),
-  options: { secret: JWT_SECRET },
-  logger: new Logger('JwtService'),
+  signAsync: jest.fn().mockImplementation(() => {
+    return Promise.resolve('test.jwt.token');
+  }),
+  verify: jest.fn().mockImplementation(() => ({
+    sub: TEST_USER_ID,
+    email: 'test@example.com',
+  })),
+  verifyAsync: jest.fn().mockImplementation(() => {
+    return Promise.resolve({
+      sub: TEST_USER_ID,
+      email: 'test@example.com',
+    });
+  }),
+  decode: jest.fn().mockImplementation(() => ({
+    sub: TEST_USER_ID,
+    email: 'test@example.com',
+  })),
 } as unknown as JwtService;
+
+const mockJwtAuthGuard = {
+  canActivate: jest.fn().mockImplementation((context) => {
+    const request = context.switchToHttp().getRequest();
+    const token = request.headers.authorization?.split(' ')[1];
+    if (token) {
+      try {
+        const payload = mockJwtService.verify(token, { secret: JWT_SECRET });
+        request.user = { id: payload.sub };
+        return true;
+      } catch (error) {
+        return false;
+      }
+    }
+    return false;
+  }),
+};
 
 @Module({
   imports: [
@@ -94,6 +149,10 @@ const mockJwtService = {
     MessagingService,
     MessagingGateway,
     {
+      provide: ConfigService,
+      useValue: mockConfigService,
+    },
+    {
       provide: UsersService,
       useValue: mockUsersService,
     },
@@ -102,18 +161,11 @@ const mockJwtService = {
       useValue: mockJwtService,
     },
     {
-      provide: ConfigService,
-      useValue: mockConfigService,
-    },
-    {
-      provide: WsJwtGuard,
-      useFactory: () => new WsJwtGuard(mockJwtService, mockUsersService),
+      provide: JwtAuthGuard,
+      useValue: mockJwtAuthGuard,
     },
     JwtStrategy,
-    {
-      provide: JwtAuthGuard,
-      useClass: JwtAuthGuard,
-    },
+    WsJwtGuard,
   ],
   exports: [MessagingService],
 })

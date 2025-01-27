@@ -15,9 +15,20 @@ describe('UsersController (Integration)', () => {
     id: '123e4567-e89b-12d3-a456-426614174000',
     email: 'test@example.com',
     username: 'testuser',
-    name: 'Test User',
+    firstName: 'Test',
+    lastName: 'User',
     avatarUrl: null,
     rating: 0,
+    role: 'user',
+    isEmailVerified: false,
+    address: {
+      street: '123 Test St',
+      zipCode: '75000',
+      city: 'Paris',
+      additionalInfo: '',
+    },
+    createdAt: new Date(),
+    updatedAt: new Date(),
   };
 
   beforeAll(async () => {

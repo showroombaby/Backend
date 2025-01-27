@@ -1,10 +1,11 @@
+import { BadRequestException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { Test, TestingModule } from '@nestjs/testing';
 import { EmailService } from '../../email/services/email.service';
 import { Role } from '../../users/enums/role.enum';
+import { FileService } from '../../users/services/file.service';
 import { UsersService } from '../../users/services/users.service';
 import { AuthService } from '../services/auth.service';
-import { BadRequestException } from '@nestjs/common';
 
 describe('AuthService', () => {
   let service: AuthService;
@@ -24,6 +25,7 @@ describe('AuthService', () => {
     findByEmail: jest.fn().mockResolvedValue(null),
     findByUsername: jest.fn().mockResolvedValue(null),
     create: jest.fn().mockResolvedValue(mockUser),
+    updateProfile: jest.fn().mockResolvedValue(mockUser),
   };
 
   const mockJwtService = {
@@ -32,6 +34,10 @@ describe('AuthService', () => {
 
   const mockEmailService = {
     sendVerificationEmail: jest.fn().mockResolvedValue(undefined),
+  };
+
+  const mockFileService = {
+    saveAvatar: jest.fn().mockResolvedValue('avatar.jpg'),
   };
 
   beforeEach(async () => {
@@ -49,6 +55,10 @@ describe('AuthService', () => {
         {
           provide: EmailService,
           useValue: mockEmailService,
+        },
+        {
+          provide: FileService,
+          useValue: mockFileService,
         },
       ],
     }).compile();
@@ -78,6 +88,8 @@ describe('AuthService', () => {
 
       const result = await service.register(registerDto);
       expect(result).toBeDefined();
+      expect(result.user.email).toBe(registerDto.email);
+      expect(result.message).toBe('Registration successful');
     });
 
     it('should throw BadRequestException if email already exists', async () => {
@@ -93,6 +105,33 @@ describe('AuthService', () => {
 
       await expect(service.register(registerDto)).rejects.toThrow(
         BadRequestException,
+      );
+    });
+
+    it('should handle avatar upload', async () => {
+      const registerDto = {
+        email: 'test@example.com',
+        username: 'testuser',
+        password: 'password123',
+        firstName: 'Test',
+        lastName: 'User',
+      };
+
+      const avatar = {
+        filename: 'test.jpg',
+        mimetype: 'image/jpeg',
+      } as Express.Multer.File;
+
+      mockUsersService.findByEmail.mockResolvedValue(null);
+      mockUsersService.findByUsername.mockResolvedValue(null);
+      mockUsersService.create.mockResolvedValue(mockUser);
+      mockFileService.saveAvatar.mockResolvedValue('avatar.jpg');
+
+      const result = await service.register(registerDto, avatar);
+      expect(result).toBeDefined();
+      expect(mockFileService.saveAvatar).toHaveBeenCalledWith(
+        avatar,
+        mockUser.id,
       );
     });
   });

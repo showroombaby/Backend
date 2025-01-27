@@ -33,6 +33,7 @@ export class AuthController {
         user: {
           id: result.user.id,
           email: result.user.email,
+          username: result.user.username,
           firstName: result.user.firstName,
           lastName: result.user.lastName,
           address: result.user.address,

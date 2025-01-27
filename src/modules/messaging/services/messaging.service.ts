@@ -33,9 +33,18 @@ export class MessagingService {
       throw new NotFoundException('Destinataire non trouvé');
     }
 
+    const sender = await this.userRepository.findOne({
+      where: { id: senderId },
+    });
+    if (!sender) {
+      throw new NotFoundException('Expéditeur non trouvé');
+    }
+
+    let product = null;
     if (productId) {
-      const product = await this.productRepository.findOne({
+      product = await this.productRepository.findOne({
         where: { id: productId },
+        relations: ['seller', 'category'],
       });
       if (!product) {
         throw new NotFoundException('Produit non trouvé');
@@ -44,15 +53,19 @@ export class MessagingService {
 
     const message = this.messageRepository.create({
       content: createMessageDto.content,
-      senderId: senderId,
-      recipientId: createMessageDto.recipientId,
-      productId: createMessageDto.productId,
+      sender,
+      recipient,
+      product,
       read: false,
       archivedBySender: false,
       archivedByRecipient: false,
     });
 
-    return await this.messageRepository.save(message);
+    const savedMessage = await this.messageRepository.save(message);
+    return await this.messageRepository.findOne({
+      where: { id: savedMessage.id },
+      relations: ['sender', 'recipient', 'product'],
+    });
   }
 
   async getConversations(userId: string): Promise<Message[]> {

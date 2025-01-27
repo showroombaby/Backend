@@ -24,6 +24,6 @@
       "@config/*": ["src/config/*"]
     }
   },
-  "include": ["src/**/*", "jest.config.js"],
+  "include": ["src/**/*", "test/**/*", "jest.config.js"],
   "exclude": ["node_modules", "dist"]
 }

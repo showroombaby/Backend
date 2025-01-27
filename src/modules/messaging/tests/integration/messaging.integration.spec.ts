@@ -56,6 +56,7 @@ describe('MessagingService (Integration)', () => {
       const user = await userRepository.save({
         email: 'test@example.com',
         password: 'password',
+        username: 'testuser',
         firstName: 'Test',
         lastName: 'User',
       });
