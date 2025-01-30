@@ -15,6 +15,8 @@ import { MessagingController } from '../controllers/messaging.controller';
 import { Message } from '../entities/message.entity';
 import { MessagingGateway } from '../gateways/messaging.gateway';
 import { MessagingService } from '../services/messaging.service';
+import * as jwt from 'jsonwebtoken';
+import { getRepositoryToken } from '@nestjs/typeorm';
 
 const JWT_SECRET = 'test-secret-key';
 const TEST_USER_ID = '123e4567-e89b-12d3-a456-426614174000';
@@ -96,44 +98,26 @@ const mockUsersService = {
 } as unknown as UsersService;
 
 const mockJwtService = {
-  sign: jest.fn().mockImplementation(() => {
-    return 'test.jwt.token';
+  sign: jest.fn().mockImplementation((payload, options) => {
+    const secret = options?.secret || JWT_SECRET;
+    return jwt.sign(payload, secret, { expiresIn: '24h' });
   }),
-  signAsync: jest.fn().mockImplementation(() => {
-    return Promise.resolve('test.jwt.token');
+  signAsync: jest.fn().mockImplementation((payload, options) => {
+    const secret = options?.secret || JWT_SECRET;
+    return Promise.resolve(jwt.sign(payload, secret, { expiresIn: '24h' }));
   }),
-  verify: jest.fn().mockImplementation(() => ({
-    sub: TEST_USER_ID,
-    email: 'test@example.com',
-  })),
-  verifyAsync: jest.fn().mockImplementation(() => {
-    return Promise.resolve({
-      sub: TEST_USER_ID,
-      email: 'test@example.com',
-    });
+  verify: jest.fn().mockImplementation((token, options) => {
+    const secret = options?.secret || JWT_SECRET;
+    return jwt.verify(token, secret);
   }),
-  decode: jest.fn().mockImplementation(() => ({
-    sub: TEST_USER_ID,
-    email: 'test@example.com',
-  })),
+  verifyAsync: jest.fn().mockImplementation((token, options) => {
+    const secret = options?.secret || JWT_SECRET;
+    return Promise.resolve(jwt.verify(token, secret));
+  }),
+  decode: jest.fn().mockImplementation((token) => {
+    return jwt.decode(token);
+  }),
 } as unknown as JwtService;
-
-const mockJwtAuthGuard = {
-  canActivate: jest.fn().mockImplementation((context) => {
-    const request = context.switchToHttp().getRequest();
-    const token = request.headers.authorization?.split(' ')[1];
-    if (token) {
-      try {
-        const payload = mockJwtService.verify(token, { secret: JWT_SECRET });
-        request.user = { id: payload.sub };
-        return true;
-      } catch (error) {
-        return false;
-      }
-    }
-    return false;
-  }),
-};
 
 @Module({
   imports: [
@@ -146,8 +130,29 @@ const mockJwtAuthGuard = {
   ],
   controllers: [MessagingController],
   providers: [
-    MessagingService,
-    MessagingGateway,
+    {
+      provide: MessagingService,
+      useFactory: (
+        messageRepo: Repository<Message>,
+        userRepo: Repository<User>,
+        productRepo: Repository<Product>,
+      ) => {
+        return new MessagingService(messageRepo, userRepo, productRepo);
+      },
+      inject: [
+        getRepositoryToken(Message),
+        getRepositoryToken(User),
+        getRepositoryToken(Product),
+      ],
+    },
+    {
+      provide: MessagingGateway,
+      useFactory: (messagingService: MessagingService) => {
+        const gateway = new MessagingGateway(messagingService);
+        return gateway;
+      },
+      inject: [MessagingService],
+    },
     {
       provide: ConfigService,
       useValue: mockConfigService,
@@ -162,9 +167,14 @@ const mockJwtAuthGuard = {
     },
     {
       provide: JwtAuthGuard,
-      useValue: mockJwtAuthGuard,
+      useClass: JwtAuthGuard,
     },
-    JwtStrategy,
+    {
+      provide: JwtStrategy,
+      useFactory: () => {
+        return new JwtStrategy(mockConfigService, mockUsersService);
+      },
+    },
     WsJwtGuard,
   ],
   exports: [MessagingService],
