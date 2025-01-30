@@ -127,7 +127,7 @@ describe('MessagingController (Integration)', () => {
       expect(savedProduct.category.id).toBe(category.id);
 
       const token = jwtService.sign(
-        { sub: sender.id },
+        { sub: sender.id, email: sender.email },
         { secret: 'test-secret-key' },
       );
 
